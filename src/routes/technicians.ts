@@ -143,15 +143,12 @@ const techniciansRoutes: FastifyPluginAsync = async (fastify) => {
       return forbidden(reply, 'Insufficient permissions');
     }
 
-    // TODO: Ideal ordering would be by technicianProfile.updatedAt, but Prisma doesn't support
-    // ordering by nested relation fields easily. Using User.updatedAt + id for stable pagination.
     const technicians = await fastify.prisma.user.findMany({
       where,
       select: {
         id: true,
         email: true,
         role: true,
-        updatedAt: true,
         technicianProfile: {
           select: {
             id: true,
@@ -161,11 +158,10 @@ const techniciansRoutes: FastifyPluginAsync = async (fastify) => {
             truckId: true,
             supervisorId: true,
             active: true,
-            updatedAt: true,
           },
         },
       },
-      orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+      orderBy: { id: 'asc' },
       take: limit + 1,
       ...(cursor && { cursor: { id: cursor }, skip: 1 }),
     });

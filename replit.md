@@ -33,6 +33,8 @@ The core GET endpoints (`/api/properties`, `/api/technicians`, `/api/assignments
 - `limit` - Number of items per page (default: 50, max: 200)
 - `cursor` - ID-based cursor for pagination (from previous response's `nextCursor`)
 
+**Note:** Pagination ordering is by `id` (stable ordering). The `updatedSince` filter is applied separately and returns only records updated after the specified timestamp.
+
 ### Response Format
 All paginated endpoints return:
 ```json

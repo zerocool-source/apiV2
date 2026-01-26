@@ -84,7 +84,7 @@ const propertiesRoutes: FastifyPluginAsync = async (fastify) => {
 
       const properties = await fastify.prisma.property.findMany({
         where,
-        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+        orderBy: { id: 'asc' },
         take: limit + 1,
         ...(cursor && { cursor: { id: cursor }, skip: 1 }),
       });
@@ -131,7 +131,7 @@ const propertiesRoutes: FastifyPluginAsync = async (fastify) => {
 
       const properties = await fastify.prisma.property.findMany({
         where: propertyWhere,
-        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+        orderBy: { id: 'asc' },
         take: limit + 1,
         ...(cursor && { cursor: { id: cursor }, skip: 1 }),
       });
@@ -147,7 +147,7 @@ const propertiesRoutes: FastifyPluginAsync = async (fastify) => {
 
     const properties = await fastify.prisma.property.findMany({
       where,
-      orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+      orderBy: { id: 'asc' },
       take: limit + 1,
       ...(cursor && { cursor: { id: cursor }, skip: 1 }),
     });
