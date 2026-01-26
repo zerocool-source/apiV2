@@ -10,6 +10,9 @@
     "check": "tsc",
     "db:push": "drizzle-kit push"
   },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
     "@fastify/jwt": "^10.0.0",
@@ -120,3 +123,5 @@
     "bufferutil": "^4.0.8"
   }
 }
+
+  
