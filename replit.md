@@ -123,6 +123,7 @@ Supervisors are assigned a region and can only:
 | tech.mid2@breakpoint.local | password123 | tech | mid |
 | tech.south1@breakpoint.local | password123 | tech | south |
 | tech.south2@breakpoint.local | password123 | tech | south |
+| tech.unassigned@breakpoint.local | password123 | tech | - |
 
 ## Database Commands
 
@@ -137,7 +138,78 @@ npx prisma migrate deploy
 npx tsx prisma/seed.ts
 ```
 
+## Curl Test Commands
+
+```bash
+# Login as supervisor (save token)
+TOKEN=$(curl -s -X POST http://localhost:5000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "supervisor.north@breakpoint.local", "password": "password123"}' \
+  | grep -o '"token":"[^"]*"' | sed 's/"token":"//;s/"$//')
+
+# GET /api/technicians (supervisor sees only their team)
+curl -s http://localhost:5000/api/technicians \
+  -H "Authorization: Bearer $TOKEN"
+
+# GET /api/technicians?includeInactive=true
+curl -s "http://localhost:5000/api/technicians?includeInactive=true" \
+  -H "Authorization: Bearer $TOKEN"
+
+# PATCH to deactivate a tech (replace TECH_ID with actual ID)
+curl -s -X PATCH http://localhost:5000/api/technicians/TECH_ID \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"active": false}'
+
+# PATCH to claim an unassigned tech (replace UNASSIGNED_TECH_ID)
+curl -s -X PATCH http://localhost:5000/api/technicians/UNASSIGNED_TECH_ID \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"supervisorId": "SUPERVISOR_USER_ID"}'
+
+# POST /api/assignments (success for own tech)
+curl -s -X POST http://localhost:5000/api/assignments \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "propertyId": "PROPERTY_ID",
+    "technicianId": "OWN_TECH_ID",
+    "scheduledDate": "2026-02-01T09:00:00Z",
+    "priority": "med"
+  }'
+
+# POST /api/assignments (403 for tech from another team)
+curl -s -X POST http://localhost:5000/api/assignments \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "propertyId": "PROPERTY_ID",
+    "technicianId": "OTHER_TEAM_TECH_ID",
+    "scheduledDate": "2026-02-01T09:00:00Z"
+  }'
+# Expected: {"error":"FORBIDDEN","message":"You can only create assignments for your team members"}
+
+# Tech trying to create assignment (403)
+TECH_TOKEN=$(curl -s -X POST http://localhost:5000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "tech.north1@breakpoint.local", "password": "password123"}' \
+  | grep -o '"token":"[^"]*"' | sed 's/"token":"//;s/"$//')
+
+curl -s -X POST http://localhost:5000/api/assignments \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TECH_TOKEN" \
+  -d '{"propertyId": "X", "technicianId": "Y", "scheduledDate": "2026-02-01T09:00:00Z"}'
+# Expected: {"error":"FORBIDDEN","message":"Insufficient permissions"}
+```
+
 ## Recent Changes
+
+- **2026-01-26**: Supervisor-Technician roster management
+  - GET /api/technicians: supervisor sees only their team, repair sees all, tech sees self
+  - Added ?includeInactive=true query param to include inactive technicians
+  - PATCH /api/technicians/:id: supervisor can update own techs or claim unassigned
+  - POST /api/assignments: repair role can create for anyone, tech gets 403
+  - Added unassigned tech for testing claim functionality
 
 - **2026-01-26**: Multi-supervisor isolation with regional teams
   - Added `Region` enum (north, mid, south) to Prisma schema

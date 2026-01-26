@@ -198,6 +198,26 @@ async function main() {
   });
   console.log('Created south region techs:', techSouth1.email, techSouth2.email);
 
+  // ===== UNASSIGNED TECH (for testing claim functionality) =====
+  const unassignedTech = await prisma.user.create({
+    data: {
+      email: 'tech.unassigned@breakpoint.local',
+      passwordHash: password,
+      role: 'tech',
+      technicianProfile: {
+        create: {
+          name: 'Unassigned Tech',
+          phone: '555-9999',
+          truckId: 'TRUCK-X01',
+          supervisorId: null,
+          region: null,
+          active: true,
+        },
+      },
+    },
+  });
+  console.log('Created unassigned tech:', unassignedTech.email);
+
   // ===== PROPERTIES (2 per region) =====
   // North Region Properties
   const propNorth1 = await prisma.property.create({

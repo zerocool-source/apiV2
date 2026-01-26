@@ -160,9 +160,9 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
     return assignment;
   });
 
-  // POST /api/assignments (supervisor/admin only)
+  // POST /api/assignments (supervisor/repair/admin only - tech gets 403)
   fastify.post('/', {
-    preHandler: [fastify.requireRole(['supervisor', 'admin'])],
+    preHandler: [fastify.requireRole(['supervisor', 'repair', 'admin'])],
   }, async (request, reply) => {
     const user = request.user;
     const result = createAssignmentSchema.safeParse(request.body);
@@ -190,6 +190,7 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     // Supervisor can only assign their own team members
+    // Repair/Admin can assign anyone
     if (user.role === 'supervisor') {
       if (!technician.technicianProfile || technician.technicianProfile.supervisorId !== user.sub) {
         return forbidden(reply, 'You can only create assignments for your team members');
