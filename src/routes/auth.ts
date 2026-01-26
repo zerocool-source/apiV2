@@ -18,7 +18,36 @@ const loginSchema = z.object({
 
 const authRoutes: FastifyPluginAsync = async (fastify) => {
   // POST /api/auth/register
-  fastify.post('/register', async (request, reply) => {
+  fastify.post('/register', {
+    schema: {
+      tags: ['Auth'],
+      summary: 'Register a new user',
+      description: 'Create a new user account. This is a public endpoint.',
+      security: [],
+      body: {
+        type: 'object',
+        required: ['email', 'password'],
+        properties: {
+          email: { type: 'string', format: 'email', example: 'user@example.com' },
+          password: { type: 'string', minLength: 6, example: 'password123' },
+          role: { type: 'string', enum: ['tech', 'supervisor', 'repair', 'admin'], default: 'tech' },
+          name: { type: 'string', example: 'John Doe' },
+          phone: { type: 'string', example: '555-1234' },
+        },
+      },
+      response: {
+        201: {
+          type: 'object',
+          properties: {
+            user: { $ref: '#/components/schemas/User' },
+            token: { type: 'string' },
+          },
+        },
+        400: { $ref: '#/components/schemas/Error' },
+        409: { $ref: '#/components/schemas/Error' },
+      },
+    },
+  }, async (request, reply) => {
     const result = registerSchema.safeParse(request.body);
     if (!result.success) {
       return badRequest(reply, 'Invalid request body', result.error.flatten());
@@ -71,7 +100,33 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // POST /api/auth/login
-  fastify.post('/login', async (request, reply) => {
+  fastify.post('/login', {
+    schema: {
+      tags: ['Auth'],
+      summary: 'Login and get JWT token',
+      description: 'Authenticate with email and password to receive a JWT token. This is a public endpoint.',
+      security: [],
+      body: {
+        type: 'object',
+        required: ['email', 'password'],
+        properties: {
+          email: { type: 'string', format: 'email', example: 'admin@breakpoint.local' },
+          password: { type: 'string', example: 'password123' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            user: { $ref: '#/components/schemas/User' },
+            token: { type: 'string', description: 'JWT Bearer token' },
+          },
+        },
+        400: { $ref: '#/components/schemas/Error' },
+        401: { $ref: '#/components/schemas/Error' },
+      },
+    },
+  }, async (request, reply) => {
     const result = loginSchema.safeParse(request.body);
     if (!result.success) {
       return badRequest(reply, 'Invalid request body', result.error.flatten());
@@ -112,9 +167,22 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // POST /api/auth/logout
-  fastify.post('/logout', async (request, reply) => {
-    // Client-side logout - token invalidation would require a blacklist
-    // For now, return success and let client discard token
+  fastify.post('/logout', {
+    schema: {
+      tags: ['Auth'],
+      summary: 'Logout',
+      description: 'Client-side logout. Discard the JWT token.',
+      security: [],
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            message: { type: 'string', example: 'Logged out successfully' },
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
     return { message: 'Logged out successfully' };
   });
 };

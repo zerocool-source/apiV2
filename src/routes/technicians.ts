@@ -26,6 +26,32 @@ const techniciansRoutes: FastifyPluginAsync = async (fastify) => {
   // - repair (admin equivalent): returns all technicians
   // - tech: returns only their own profile
   fastify.get('/', {
+    schema: {
+      tags: ['Technicians'],
+      summary: 'List technicians',
+      description: 'Get technicians based on role: tech sees self, supervisor sees team, admin/repair sees all.',
+      querystring: {
+        type: 'object',
+        properties: {
+          includeInactive: { type: 'string', enum: ['true', 'false'], description: 'Include inactive technicians' },
+        },
+      },
+      response: {
+        200: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', format: 'uuid' },
+              email: { type: 'string' },
+              role: { type: 'string' },
+              technicianProfile: { $ref: '#/components/schemas/TechnicianProfile' },
+            },
+          },
+        },
+        401: { $ref: '#/components/schemas/Error' },
+      },
+    },
     preHandler: [fastify.requireAuth],
   }, async (request, reply) => {
     const user = request.user;
@@ -114,6 +140,37 @@ const techniciansRoutes: FastifyPluginAsync = async (fastify) => {
   // POST /api/technicians
   // Admin-only: create a new technician user + profile
   fastify.post('/', {
+    schema: {
+      tags: ['Technicians'],
+      summary: 'Create technician (Admin only)',
+      description: 'Create a new technician user with profile. Requires admin or repair role.',
+      body: {
+        type: 'object',
+        required: ['email', 'password', 'name'],
+        properties: {
+          email: { type: 'string', format: 'email', example: 'new.tech@breakpoint.local' },
+          password: { type: 'string', minLength: 8, example: 'password123' },
+          name: { type: 'string', example: 'John Tech' },
+          phone: { type: 'string', example: '555-1234' },
+          truckId: { type: 'string', example: 'TRUCK-01' },
+          supervisorId: { type: 'string', format: 'uuid', nullable: true, description: 'Supervisor to assign (null for unassigned)' },
+        },
+      },
+      response: {
+        201: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            email: { type: 'string' },
+            role: { type: 'string' },
+            technicianProfile: { $ref: '#/components/schemas/TechnicianProfile' },
+          },
+        },
+        400: { $ref: '#/components/schemas/Error' },
+        403: { $ref: '#/components/schemas/Error' },
+        409: { $ref: '#/components/schemas/Error' },
+      },
+    },
     preHandler: [fastify.requireRole(['admin', 'repair'])],
   }, async (request, reply) => {
     const result = createTechnicianSchema.safeParse(request.body);
@@ -195,6 +252,41 @@ const techniciansRoutes: FastifyPluginAsync = async (fastify) => {
   // - repair (admin): can update any technician
   // - tech: can only update their own name/phone/truckId
   fastify.patch('/:id', {
+    schema: {
+      tags: ['Technicians'],
+      summary: 'Update technician',
+      description: 'Update technician profile. Tech can update own profile (name/phone/truckId). Supervisor can update their team. Admin can update any.',
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid', description: 'Technician user ID' },
+        },
+      },
+      body: {
+        type: 'object',
+        properties: {
+          supervisorId: { type: 'string', format: 'uuid', nullable: true, example: null },
+          active: { type: 'boolean', example: true },
+          name: { type: 'string', example: 'Updated Name' },
+          phone: { type: 'string', example: '555-9999' },
+          truckId: { type: 'string', example: 'TRUCK-02' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            email: { type: 'string' },
+            role: { type: 'string' },
+            technicianProfile: { $ref: '#/components/schemas/TechnicianProfile' },
+          },
+        },
+        400: { $ref: '#/components/schemas/Error' },
+        403: { $ref: '#/components/schemas/Error' },
+        404: { $ref: '#/components/schemas/Error' },
+      },
+    },
     preHandler: [fastify.requireAuth],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };

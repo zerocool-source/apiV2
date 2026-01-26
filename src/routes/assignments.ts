@@ -47,6 +47,28 @@ const techUpdateSchema = z.object({
 const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /api/assignments
   fastify.get('/', {
+    schema: {
+      tags: ['Assignments'],
+      summary: 'List assignments',
+      description: 'Get assignments. Tech sees own, supervisor sees team, admin sees all. Excludes cancelled by default.',
+      querystring: {
+        type: 'object',
+        properties: {
+          technicianId: { type: 'string', format: 'uuid' },
+          propertyId: { type: 'string', format: 'uuid' },
+          status: { type: 'string', enum: ['pending', 'in_progress', 'completed', 'cancelled', 'canceled'] },
+          priority: { type: 'string', enum: ['low', 'med', 'high'] },
+          includeCanceled: { type: 'string', enum: ['true', 'false'], description: 'Include cancelled assignments' },
+        },
+      },
+      response: {
+        200: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/Assignment' },
+        },
+        401: { $ref: '#/components/schemas/Error' },
+      },
+    },
     preHandler: [fastify.requireAuth],
   }, async (request) => {
     const user = request.user;
@@ -197,6 +219,28 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
 
   // POST /api/assignments (supervisor/repair/admin only - tech gets 403)
   fastify.post('/', {
+    schema: {
+      tags: ['Assignments'],
+      summary: 'Create assignment',
+      description: 'Create a new assignment. Requires supervisor, repair, or admin role. Supervisor can only assign to their team.',
+      body: {
+        type: 'object',
+        required: ['propertyId', 'technicianId', 'scheduledDate'],
+        properties: {
+          propertyId: { type: 'string', format: 'uuid', example: '123e4567-e89b-12d3-a456-426614174000' },
+          technicianId: { type: 'string', format: 'uuid', example: '123e4567-e89b-12d3-a456-426614174001' },
+          scheduledDate: { type: 'string', format: 'date-time', example: '2026-02-01T09:00:00.000Z' },
+          priority: { type: 'string', enum: ['low', 'med', 'high'], default: 'med' },
+          notes: { type: 'string', example: 'Check chemical levels' },
+        },
+      },
+      response: {
+        201: { $ref: '#/components/schemas/Assignment' },
+        400: { $ref: '#/components/schemas/Error' },
+        403: { $ref: '#/components/schemas/Error' },
+        404: { $ref: '#/components/schemas/Error' },
+      },
+    },
     preHandler: [fastify.requireRole(['supervisor', 'repair', 'admin'])],
   }, async (request, reply) => {
     const user = request.user;
@@ -253,6 +297,34 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
 
   // PATCH /api/assignments/:id
   fastify.patch('/:id', {
+    schema: {
+      tags: ['Assignments'],
+      summary: 'Update assignment',
+      description: 'Update assignment status/details. Tech can update status (pending->in_progress->completed) and notes. Supervisor can update scheduledDate, priority, notes, and cancel. Admin can update all fields. Both "cancelled" and "canceled" spellings are accepted.',
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+        },
+      },
+      body: {
+        type: 'object',
+        properties: {
+          status: { type: 'string', enum: ['pending', 'in_progress', 'completed', 'cancelled', 'canceled'], description: 'Both "cancelled" and "canceled" are accepted, stored as "cancelled"' },
+          priority: { type: 'string', enum: ['low', 'med', 'high'] },
+          scheduledDate: { type: 'string', format: 'date-time' },
+          technicianId: { type: 'string', format: 'uuid', description: 'Admin only' },
+          notes: { type: 'string' },
+          canceledReason: { type: 'string', description: 'Reason for cancellation' },
+        },
+      },
+      response: {
+        200: { $ref: '#/components/schemas/Assignment' },
+        400: { $ref: '#/components/schemas/Error' },
+        403: { $ref: '#/components/schemas/Error' },
+        404: { $ref: '#/components/schemas/Error' },
+      },
+    },
     preHandler: [fastify.requireAuth],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
