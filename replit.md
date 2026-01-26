@@ -17,10 +17,18 @@ The API is built using **Fastify** for high performance, **TypeScript** for type
 - **Environment Variable Configuration**: Critical settings like `JWT_SECRET`, database URL, and CORS origins are managed via environment variables for flexible deployment.
 - **API Endpoints**: All API endpoints are prefixed with `/api` and cover authentication, core business logic, team tracking, emergency services, messaging, and operational metrics.
 
+## API Documentation
+The API includes interactive OpenAPI/Swagger documentation:
+- **Swagger UI**: `/docs` - Interactive documentation with "Try it out" functionality
+- **OpenAPI Spec**: `/docs/json` - Raw OpenAPI 3.0 JSON specification
+
+The documentation covers 40+ endpoints organized by tags: Auth, Technicians, Assignments, Properties, Jobs, Metrics, Emergencies, Messages, Locations, Inspections, Inventory, Uploads, Sync, and Health.
+
 ## External Dependencies
 - **PostgreSQL**: Primary database for all application data, integrated via Replit's built-in PostgreSQL.
 - **Prisma**: ORM for interacting with the PostgreSQL database.
 - **Fastify**: Web framework for building the API.
+- **@fastify/swagger & @fastify/swagger-ui**: OpenAPI documentation generation.
 - **jsonwebtoken (JWT)**: For token-based authentication.
 - **bcrypt**: For secure password hashing.
 - **Zod**: For schema validation of API requests.
