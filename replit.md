@@ -92,19 +92,37 @@ All endpoints are under `/api` prefix.
 
 ## Roles
 
-- `tech` - Field technician
-- `supervisor` - Can manage all resources
+- `tech` - Field technician (sees only own assignments)
+- `supervisor` - Can manage their team's resources (isolated by supervisorId)
 - `repair` - Repair technician
-- `admin` - Full access
+- `admin` - Full access across all regions
+
+## Regions
+
+The system supports multi-supervisor isolation with 3 regions:
+- `north` - North region properties and technicians
+- `mid` - Mid region properties and technicians
+- `south` - South region properties and technicians
+
+Supervisors are assigned a region and can only:
+- View/manage technicians with `supervisorId` matching their user ID
+- View properties matching their region OR assigned to their team
+- Create assignments only for their own team members
 
 ## Test Users (Development)
 
-| Email | Password | Role |
-|-------|----------|------|
-| admin@breakpoint.local | password123 | admin |
-| supervisor@breakpoint.local | password123 | supervisor |
-| tech@breakpoint.local | password123 | tech |
-| repair@breakpoint.local | password123 | repair |
+| Email | Password | Role | Region |
+|-------|----------|------|--------|
+| admin@breakpoint.local | password123 | admin | - |
+| supervisor.north@breakpoint.local | password123 | supervisor | north |
+| supervisor.mid@breakpoint.local | password123 | supervisor | mid |
+| supervisor.south@breakpoint.local | password123 | supervisor | south |
+| tech.north1@breakpoint.local | password123 | tech | north |
+| tech.north2@breakpoint.local | password123 | tech | north |
+| tech.mid1@breakpoint.local | password123 | tech | mid |
+| tech.mid2@breakpoint.local | password123 | tech | mid |
+| tech.south1@breakpoint.local | password123 | tech | south |
+| tech.south2@breakpoint.local | password123 | tech | south |
 
 ## Database Commands
 
@@ -120,6 +138,14 @@ npx tsx prisma/seed.ts
 ```
 
 ## Recent Changes
+
+- **2026-01-26**: Multi-supervisor isolation with regional teams
+  - Added `Region` enum (north, mid, south) to Prisma schema
+  - Added `TechnicianProfile.supervisorId` for team membership
+  - Added `TechnicianProfile.region` and `Property.region` for regional organization
+  - Supervisors can only view/manage their own team's data
+  - Cross-team assignment attempts blocked with 403 Forbidden
+  - Updated seed script with 3 supervisors, 6 technicians, 6 properties
 
 - **2026-01-26**: Assignment priority & enhanced RBAC
   - Added Assignment.priority field (low|med|high, default: med)
