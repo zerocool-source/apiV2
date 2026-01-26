@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { badRequest, notFound } from '../utils/errors';
+import { parseLimit, parseUpdatedSince, buildPaginatedResponse } from '../utils/pagination';
 
 const createPropertySchema = z.object({
   name: z.string().min(1),
@@ -32,12 +33,39 @@ const completePropertySchema = z.object({
 const propertiesRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /api/properties
   fastify.get('/', {
+    schema: {
+      tags: ['Properties'],
+      summary: 'List properties with pagination',
+      description: 'Get properties with cursor pagination and incremental sync support. Tech sees assigned properties, supervisor sees team/region properties, admin sees all.',
+      querystring: {
+        type: 'object',
+        properties: {
+          updatedSince: { type: 'string', format: 'date-time', description: 'ISO timestamp to filter properties updated after this time' },
+          limit: { type: 'integer', minimum: 1, maximum: 200, default: 50, description: 'Number of items per page (default 50, max 200)' },
+          cursor: { type: 'string', format: 'uuid', description: 'Cursor for pagination (property ID)' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            items: { type: 'array', items: { $ref: 'Property#' } },
+            nextCursor: { type: 'string', nullable: true, description: 'Cursor for next page, null if no more results' },
+          },
+        },
+        401: { $ref: 'Error#' },
+      },
+    },
     preHandler: [fastify.requireAuth],
   }, async (request) => {
     const user = request.user;
+    const query = request.query as { updatedSince?: string; limit?: string; cursor?: string };
+    
+    const limit = parseLimit(query.limit);
+    const updatedSince = parseUpdatedSince(query.updatedSince);
+    const cursor = query.cursor;
 
     if (user.role === 'tech') {
-      // Tech can only see properties that appear in their assignments
       const assignments = await fastify.prisma.assignment.findMany({
         where: { technicianId: user.sub },
         select: { propertyId: true },
@@ -46,27 +74,29 @@ const propertiesRoutes: FastifyPluginAsync = async (fastify) => {
       const propertyIds = [...new Set(assignments.map(a => a.propertyId))];
 
       if (propertyIds.length === 0) {
-        return [];
+        return { items: [], nextCursor: null };
+      }
+
+      const where: any = { id: { in: propertyIds } };
+      if (updatedSince) {
+        where.updatedAt = { gt: updatedSince };
       }
 
       const properties = await fastify.prisma.property.findMany({
-        where: { id: { in: propertyIds } },
-        orderBy: { name: 'asc' },
+        where,
+        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+        take: limit + 1,
+        ...(cursor && { cursor: { id: cursor }, skip: 1 }),
       });
 
-      return properties;
+      return buildPaginatedResponse(properties, limit);
     }
 
     if (user.role === 'supervisor') {
-      // Supervisor sees only properties tied to their team's assignments
-      // OR properties that match their region (from their profile)
-
-      // Get supervisor's profile to check their region
       const supervisorProfile = await fastify.prisma.technicianProfile.findUnique({
         where: { userId: user.sub },
       });
 
-      // Get all assignments for the supervisor's team
       const teamAssignments = await fastify.prisma.assignment.findMany({
         where: {
           technician: {
@@ -80,11 +110,9 @@ const propertiesRoutes: FastifyPluginAsync = async (fastify) => {
 
       const assignedPropertyIds = [...new Set(teamAssignments.map(a => a.propertyId))];
 
-      // Build property query
       const propertyWhere: any = {};
       
       if (assignedPropertyIds.length > 0 && supervisorProfile?.region) {
-        // Properties from team assignments OR matching region
         propertyWhere.OR = [
           { id: { in: assignedPropertyIds } },
           { region: supervisorProfile.region },
@@ -94,23 +122,37 @@ const propertiesRoutes: FastifyPluginAsync = async (fastify) => {
       } else if (supervisorProfile?.region) {
         propertyWhere.region = supervisorProfile.region;
       } else {
-        // No team assignments and no region - return empty
-        return [];
+        return { items: [], nextCursor: null };
+      }
+
+      if (updatedSince) {
+        propertyWhere.updatedAt = { gt: updatedSince };
       }
 
       const properties = await fastify.prisma.property.findMany({
         where: propertyWhere,
-        orderBy: { name: 'asc' },
+        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+        take: limit + 1,
+        ...(cursor && { cursor: { id: cursor }, skip: 1 }),
       });
 
-      return properties;
+      return buildPaginatedResponse(properties, limit);
     }
 
     // Admin can see all properties
+    const where: any = {};
+    if (updatedSince) {
+      where.updatedAt = { gt: updatedSince };
+    }
+
     const properties = await fastify.prisma.property.findMany({
-      orderBy: { name: 'asc' },
+      where,
+      orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+      take: limit + 1,
+      ...(cursor && { cursor: { id: cursor }, skip: 1 }),
     });
-    return properties;
+
+    return buildPaginatedResponse(properties, limit);
   });
 
   // GET /api/properties/:id

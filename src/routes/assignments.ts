@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { badRequest, notFound, forbidden } from '../utils/errors';
+import { parseLimit, parseUpdatedSince, buildPaginatedResponse } from '../utils/pagination';
 
 function normalizeStatus(status: string): string {
   if (status === 'canceled') return 'cancelled';
@@ -49,8 +50,8 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/', {
     schema: {
       tags: ['Assignments'],
-      summary: 'List assignments',
-      description: 'Get assignments. Tech sees own, supervisor sees team, admin sees all. Excludes cancelled by default.',
+      summary: 'List assignments with pagination',
+      description: 'Get assignments with cursor pagination. Tech sees own, supervisor sees team, admin sees all. Excludes cancelled by default.',
       querystring: {
         type: 'object',
         properties: {
@@ -59,12 +60,18 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
           status: { type: 'string', enum: ['pending', 'in_progress', 'completed', 'cancelled', 'canceled'] },
           priority: { type: 'string', enum: ['low', 'med', 'high'] },
           includeCanceled: { type: 'string', enum: ['true', 'false'], description: 'Include cancelled assignments' },
+          updatedSince: { type: 'string', format: 'date-time', description: 'ISO timestamp to filter assignments updated after this time' },
+          limit: { type: 'integer', minimum: 1, maximum: 200, default: 50, description: 'Number of items per page (default 50, max 200)' },
+          cursor: { type: 'string', format: 'uuid', description: 'Cursor for pagination (assignment ID)' },
         },
       },
       response: {
         200: {
-          type: 'array',
-          items: { $ref: 'Assignment#' },
+          type: 'object',
+          properties: {
+            items: { type: 'array', items: { $ref: 'Assignment#' } },
+            nextCursor: { type: 'string', nullable: true, description: 'Cursor for next page, null if no more results' },
+          },
         },
         401: { $ref: 'Error#' },
       },
@@ -78,7 +85,14 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
       status?: string; 
       priority?: string;
       includeCanceled?: string;
+      updatedSince?: string;
+      limit?: string;
+      cursor?: string;
     };
+
+    const limit = parseLimit(query.limit);
+    const updatedSince = parseUpdatedSince(query.updatedSince);
+    const cursor = query.cursor;
 
     const where: any = {};
     
@@ -108,13 +122,17 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     // Allow explicit status filter (overrides includeCanceled logic)
-    // Normalize "canceled" -> "cancelled" for query param
     if (query.status) {
       where.status = normalizeStatus(query.status);
     }
 
     if (query.priority) {
       where.priority = query.priority;
+    }
+
+    // Apply updatedSince filter
+    if (updatedSince) {
+      where.updatedAt = { gt: updatedSince };
     }
 
     const assignments = await fastify.prisma.assignment.findMany({
@@ -130,10 +148,12 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
           },
         },
       },
-      orderBy: { scheduledDate: 'asc' },
+      orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+      take: limit + 1,
+      ...(cursor && { cursor: { id: cursor }, skip: 1 }),
     });
 
-    return assignments;
+    return buildPaginatedResponse(assignments, limit);
   });
 
   // GET /api/assignments/created

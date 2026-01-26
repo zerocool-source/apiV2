@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { badRequest, notFound, forbidden } from '../utils/errors';
 import { hashPassword } from '../utils/password';
+import { parseLimit, parseUpdatedSince, buildPaginatedResponse } from '../utils/pagination';
 
 const createTechnicianSchema = z.object({
   email: z.string().email(),
@@ -28,25 +29,34 @@ const techniciansRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/', {
     schema: {
       tags: ['Technicians'],
-      summary: 'List technicians',
-      description: 'Get technicians based on role: tech sees self, supervisor sees team, admin/repair sees all.',
+      summary: 'List technicians with pagination',
+      description: 'Get technicians based on role with cursor pagination. Tech sees self, supervisor sees team, admin/repair sees all.',
       querystring: {
         type: 'object',
         properties: {
           includeInactive: { type: 'string', enum: ['true', 'false'], description: 'Include inactive technicians' },
+          updatedSince: { type: 'string', format: 'date-time', description: 'ISO timestamp to filter technicians updated after this time (applies to profile.updatedAt)' },
+          limit: { type: 'integer', minimum: 1, maximum: 200, default: 50, description: 'Number of items per page (default 50, max 200)' },
+          cursor: { type: 'string', format: 'uuid', description: 'Cursor for pagination (user ID)' },
         },
       },
       response: {
         200: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              id: { type: 'string', format: 'uuid' },
-              email: { type: 'string' },
-              role: { type: 'string' },
-              technicianProfile: { $ref: 'TechnicianProfile#' },
+          type: 'object',
+          properties: {
+            items: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', format: 'uuid' },
+                  email: { type: 'string' },
+                  role: { type: 'string' },
+                  technicianProfile: { $ref: 'TechnicianProfile#' },
+                },
+              },
             },
+            nextCursor: { type: 'string', nullable: true, description: 'Cursor for next page, null if no more results' },
           },
         },
         401: { $ref: 'Error#' },
@@ -55,10 +65,14 @@ const techniciansRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.requireAuth],
   }, async (request, reply) => {
     const user = request.user;
-    const query = request.query as { includeInactive?: string };
+    const query = request.query as { includeInactive?: string; updatedSince?: string; limit?: string; cursor?: string };
     const includeInactive = query.includeInactive === 'true';
+    
+    const limit = parseLimit(query.limit);
+    const updatedSince = parseUpdatedSince(query.updatedSince);
+    const cursor = query.cursor;
 
-    // Tech role: return only their own profile
+    // Tech role: return only their own profile (no pagination needed)
     if (user.role === 'tech') {
       const techUser = await fastify.prisma.user.findUnique({
         where: { id: user.sub },
@@ -75,6 +89,7 @@ const techniciansRoutes: FastifyPluginAsync = async (fastify) => {
               truckId: true,
               supervisorId: true,
               active: true,
+              updatedAt: true,
             },
           },
         },
@@ -84,7 +99,14 @@ const techniciansRoutes: FastifyPluginAsync = async (fastify) => {
         return notFound(reply, 'User not found');
       }
 
-      return [techUser];
+      // Apply updatedSince filter for tech's own profile
+      if (updatedSince && techUser.technicianProfile) {
+        if (techUser.technicianProfile.updatedAt <= updatedSince) {
+          return { items: [], nextCursor: null };
+        }
+      }
+
+      return { items: [techUser], nextCursor: null };
     }
 
     // Build where clause for supervisor/repair/admin
@@ -98,27 +120,38 @@ const techniciansRoutes: FastifyPluginAsync = async (fastify) => {
         supervisorId: user.sub,
       };
 
-      // Filter by active unless includeInactive is true
       if (!includeInactive) {
         where.technicianProfile.active = true;
       }
+
+      // Apply updatedSince to technicianProfile
+      if (updatedSince) {
+        where.technicianProfile.updatedAt = { gt: updatedSince };
+      }
     } else if (user.role === 'repair' || user.role === 'admin') {
-      // Repair (admin equivalent) and admin see all
+      where.technicianProfile = {};
+      
       if (!includeInactive) {
-        where.technicianProfile = {
-          active: true,
-        };
+        where.technicianProfile.active = true;
+      }
+
+      // Apply updatedSince to technicianProfile
+      if (updatedSince) {
+        where.technicianProfile.updatedAt = { gt: updatedSince };
       }
     } else {
       return forbidden(reply, 'Insufficient permissions');
     }
 
+    // TODO: Ideal ordering would be by technicianProfile.updatedAt, but Prisma doesn't support
+    // ordering by nested relation fields easily. Using User.updatedAt + id for stable pagination.
     const technicians = await fastify.prisma.user.findMany({
       where,
       select: {
         id: true,
         email: true,
         role: true,
+        updatedAt: true,
         technicianProfile: {
           select: {
             id: true,
@@ -128,13 +161,16 @@ const techniciansRoutes: FastifyPluginAsync = async (fastify) => {
             truckId: true,
             supervisorId: true,
             active: true,
+            updatedAt: true,
           },
         },
       },
-      orderBy: { email: 'asc' },
+      orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+      take: limit + 1,
+      ...(cursor && { cursor: { id: cursor }, skip: 1 }),
     });
 
-    return technicians;
+    return buildPaginatedResponse(technicians, limit);
   });
 
   // POST /api/technicians
