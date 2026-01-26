@@ -1,6 +1,16 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { badRequest, notFound, forbidden } from '../utils/errors';
+import { hashPassword } from '../utils/password';
+
+const createTechnicianSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+  name: z.string().min(1, 'Name is required'),
+  phone: z.string().optional(),
+  truckId: z.string().optional(),
+  supervisorId: z.string().uuid().nullable().optional(),
+});
 
 const patchTechnicianSchema = z.object({
   supervisorId: z.string().uuid().nullable().optional(),
@@ -99,6 +109,85 @@ const techniciansRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     return technicians;
+  });
+
+  // POST /api/technicians
+  // Admin-only: create a new technician user + profile
+  fastify.post('/', {
+    preHandler: [fastify.requireRole(['admin', 'repair'])],
+  }, async (request, reply) => {
+    const result = createTechnicianSchema.safeParse(request.body);
+    if (!result.success) {
+      return badRequest(reply, 'Invalid request body', result.error.flatten());
+    }
+
+    const { email, password, name, phone, truckId, supervisorId } = result.data;
+
+    // Check if email already exists
+    const existingUser = await fastify.prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (existingUser) {
+      return reply.status(409).send({
+        error: 'CONFLICT',
+        message: 'A user with this email already exists',
+      });
+    }
+
+    // If supervisorId is provided and not null, validate it exists and is a supervisor
+    if (supervisorId !== undefined && supervisorId !== null) {
+      const supervisor = await fastify.prisma.user.findUnique({
+        where: { id: supervisorId },
+      });
+
+      if (!supervisor) {
+        return badRequest(reply, 'Supervisor not found');
+      }
+
+      if (supervisor.role !== 'supervisor') {
+        return badRequest(reply, 'The specified user is not a supervisor');
+      }
+    }
+
+    // Hash the password
+    const passwordHash = await hashPassword(password);
+
+    // Create user and technician profile in a transaction
+    const newUser = await fastify.prisma.user.create({
+      data: {
+        email,
+        passwordHash,
+        role: 'tech',
+        technicianProfile: {
+          create: {
+            name,
+            phone: phone || null,
+            truckId: truckId || null,
+            supervisorId: supervisorId ?? null,
+            active: true,
+          },
+        },
+      },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        technicianProfile: {
+          select: {
+            id: true,
+            userId: true,
+            name: true,
+            phone: true,
+            truckId: true,
+            supervisorId: true,
+            active: true,
+          },
+        },
+      },
+    });
+
+    return reply.status(201).send(newUser);
   });
 
   // PATCH /api/technicians/:id
