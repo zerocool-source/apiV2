@@ -24,6 +24,56 @@ The API includes interactive OpenAPI/Swagger documentation:
 
 The documentation covers 40+ endpoints organized by tags: Auth, Technicians, Assignments, Properties, Jobs, Metrics, Emergencies, Messages, Locations, Inspections, Inventory, Uploads, Sync, and Health.
 
+## Pagination & Incremental Sync
+
+The core GET endpoints (`/api/properties`, `/api/technicians`, `/api/assignments`) support cursor-based pagination and incremental sync:
+
+### Query Parameters
+- `updatedSince` - ISO timestamp to filter records updated after this time
+- `limit` - Number of items per page (default: 50, max: 200)
+- `cursor` - ID-based cursor for pagination (from previous response's `nextCursor`)
+
+### Response Format
+All paginated endpoints return:
+```json
+{
+  "items": [...],
+  "nextCursor": "<id>" | null
+}
+```
+
+### Example Curl Commands
+
+**Get first page of properties:**
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:5000/api/properties?limit=10"
+```
+
+**Get next page using cursor:**
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:5000/api/properties?limit=10&cursor=<nextCursor-from-previous-response>"
+```
+
+**Incremental sync (get only updated records):**
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:5000/api/properties?updatedSince=2026-01-01T00:00:00.000Z"
+```
+
+**Technicians with pagination:**
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:5000/api/technicians?limit=20&updatedSince=2026-01-15T00:00:00.000Z"
+```
+
+**Assignments with all filters:**
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:5000/api/assignments?limit=25&status=pending&updatedSince=2026-01-20T00:00:00.000Z"
+```
+
 ## External Dependencies
 - **PostgreSQL**: Primary database for all application data, integrated via Replit's built-in PostgreSQL.
 - **Prisma**: ORM for interacting with the PostgreSQL database.
