@@ -7,6 +7,7 @@ import { env } from './utils/env';
 import prismaPlugin from './plugins/prisma';
 import jwtPlugin from './plugins/jwt';
 import rbacPlugin from './plugins/rbac';
+import swaggerPlugin from './plugins/swagger';
 
 // Routes
 import healthRoutes from './routes/health';
@@ -58,6 +59,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(prismaPlugin);
   await fastify.register(jwtPlugin);
   await fastify.register(rbacPlugin);
+  await fastify.register(swaggerPlugin);
 
   // Routes
   await fastify.register(healthRoutes, { prefix: '/api' });
