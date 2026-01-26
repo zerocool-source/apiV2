@@ -37,3 +37,11 @@ author = "agent"
 task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
+
+[userenv]
+
+[userenv.shared]
+JWT_SECRET = "super-secret-jwt-key-for-pool-api-v2"
+CORS_ORIGIN = "*"
+HOST = "0.0.0.0"
+PORT = "5000"

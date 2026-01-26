@@ -1,0 +1,392 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  tech
+  supervisor
+  repair
+  admin
+}
+
+enum AssignmentStatus {
+  pending
+  in_progress
+  completed
+  cancelled
+}
+
+enum EmergencySeverity {
+  low
+  medium
+  high
+  critical
+}
+
+enum JobType {
+  repair
+  maintenance
+  inspection
+}
+
+enum JobStatus {
+  pending
+  assigned
+  in_progress
+  completed
+  cancelled
+}
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  passwordHash  String
+  role          Role     @default(tech)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  technicianProfile TechnicianProfile?
+  assignments       Assignment[]
+  propertyChannels  PropertyChannel[]
+  messagesSent      Message[]          @relation("MessageFrom")
+  messagesReceived  Message[]          @relation("MessageTo")
+  emergencyReports  EmergencyReport[]
+  locationPings     LocationPing[]
+  technicianStatus  TechnicianStatus?
+  inspections       Inspection[]
+  alerts            Alert[]
+  repairRequests    RepairRequest[]
+  serviceRepairs    ServiceRepair[]
+  chemicalOrders    ChemicalOrder[]
+  jobs              Job[]
+  estimates         Estimate[]
+  timeEntries       TimeEntry[]
+  uploads           Upload[]
+  syncBatches       SyncBatch[]
+}
+
+model TechnicianProfile {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  name      String
+  phone     String?
+  truckId   String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Property {
+  id        String   @id @default(uuid())
+  name      String
+  address   String
+  latitude  Float?
+  longitude Float?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignments        Assignment[]
+  propertyChannels   PropertyChannel[]
+  messages           Message[]
+  emergencyReports   EmergencyReport[]
+  checklistTemplates ChecklistTemplate[]
+  checklistResponses ChecklistResponse[]
+  chemicalReadings   ChemicalReading[]
+  inspections        Inspection[]
+  repairRequests     RepairRequest[]
+  serviceRepairs     ServiceRepair[]
+  chemicalOrders     ChemicalOrder[]
+  jobs               Job[]
+  uploads            Upload[]
+  technicianStatuses TechnicianStatus[]
+}
+
+model Assignment {
+  id            String           @id @default(uuid())
+  propertyId    String
+  technicianId  String
+  status        AssignmentStatus @default(pending)
+  scheduledDate DateTime
+  completedAt   DateTime?
+  notes         String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  property           Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  technician         User                @relation(fields: [technicianId], references: [id], onDelete: Cascade)
+  routeStops         RouteStop[]
+  checklistResponses ChecklistResponse[]
+  chemicalReadings   ChemicalReading[]
+  emergencyReports   EmergencyReport[]
+  technicianStatuses TechnicianStatus[]
+}
+
+model RouteStop {
+  id           String    @id @default(uuid())
+  assignmentId String
+  order        Int
+  eta          DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+}
+
+model PropertyChannel {
+  id         String   @id @default(uuid())
+  propertyId String
+  channelId  String
+  createdBy  String
+  createdAt  DateTime @default(now())
+
+  property Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  creator  User      @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  messages Message[]
+}
+
+model Message {
+  id         String   @id @default(uuid())
+  channelId  String?
+  fromUserId String
+  toUserId   String?
+  propertyId String?
+  text       String
+  createdAt  DateTime @default(now())
+
+  channel  PropertyChannel? @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  fromUser User             @relation("MessageFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser   User?            @relation("MessageTo", fields: [toUserId], references: [id], onDelete: Cascade)
+  property Property?        @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+}
+
+model EmergencyReport {
+  id           String            @id @default(uuid())
+  propertyId   String
+  assignmentId String?
+  createdBy    String
+  severity     EmergencySeverity
+  category     String
+  description  String
+  actionsTaken String?
+  photos       String[]
+  createdAt    DateTime          @default(now())
+
+  property   Property    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  assignment Assignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+  creator    User        @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+}
+
+model LocationPing {
+  id        String   @id @default(uuid())
+  userId    String
+  latitude  Float
+  longitude Float
+  timestamp DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TechnicianStatus {
+  id                  String   @id @default(uuid())
+  userId              String   @unique
+  clockedIn           Boolean  @default(false)
+  currentPropertyId   String?
+  currentAssignmentId String?
+  updatedAt           DateTime @updatedAt
+
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currentProperty   Property?   @relation(fields: [currentPropertyId], references: [id], onDelete: SetNull)
+  currentAssignment Assignment? @relation(fields: [currentAssignmentId], references: [id], onDelete: SetNull)
+}
+
+model ChecklistTemplate {
+  id         String   @id @default(uuid())
+  propertyId String?
+  name       String
+  items      Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  property Property? @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+}
+
+model ChecklistResponse {
+  id           String   @id @default(uuid())
+  assignmentId String
+  propertyId   String
+  responses    Json
+  createdAt    DateTime @default(now())
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  property   Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+}
+
+model ChemicalReading {
+  id           String   @id @default(uuid())
+  assignmentId String
+  propertyId   String
+  ph           Float
+  chlorine     Float
+  alkalinity   Float
+  cya          Float?
+  orp          Float?
+  timestamp    DateTime @default(now())
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  property   Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+}
+
+model TruckInventoryItem {
+  id        String   @id @default(uuid())
+  truckId   String
+  sku       String?
+  name      String
+  qty       Int      @default(0)
+  unit      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Inspection {
+  id              String   @id @default(uuid())
+  propertyId      String
+  inspectorUserId String
+  type            String
+  results         Json
+  createdAt       DateTime @default(now())
+
+  property  Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  inspector User     @relation(fields: [inspectorUserId], references: [id], onDelete: Cascade)
+}
+
+model Alert {
+  id        String    @id @default(uuid())
+  createdBy String
+  title     String
+  message   String
+  severity  String
+  audience  String[]
+  createdAt DateTime  @default(now())
+  expiresAt DateTime?
+
+  creator User @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+}
+
+model RepairRequest {
+  id          String   @id @default(uuid())
+  propertyId  String
+  createdBy   String
+  description String
+  priority    String
+  createdAt   DateTime @default(now())
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  creator  User     @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+}
+
+model ServiceRepair {
+  id         String   @id @default(uuid())
+  propertyId String
+  createdBy  String
+  details    Json
+  createdAt  DateTime @default(now())
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  creator  User     @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+}
+
+model ChemicalOrder {
+  id         String   @id @default(uuid())
+  propertyId String?
+  createdBy  String
+  items      Json
+  createdAt  DateTime @default(now())
+
+  property Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  creator  User      @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+}
+
+model Job {
+  id               String    @id @default(uuid())
+  type             JobType
+  propertyId       String
+  assignedToUserId String
+  status           JobStatus @default(pending)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  property   Property    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  assignedTo User        @relation(fields: [assignedToUserId], references: [id], onDelete: Cascade)
+  estimates  Estimate[]
+  timeEntries TimeEntry[]
+}
+
+model Estimate {
+  id        String   @id @default(uuid())
+  jobId     String
+  createdBy String
+  lines     Json
+  total     Float
+  createdAt DateTime @default(now())
+
+  job     Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  creator User @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+}
+
+model Product {
+  id       String  @id @default(uuid())
+  sku      String  @unique
+  name     String
+  category String?
+  price    Float
+}
+
+model TimeEntry {
+  id        String   @id @default(uuid())
+  jobId     String
+  userId    String
+  minutes   Int
+  notes     String?
+  createdAt DateTime @default(now())
+
+  job  Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Upload {
+  id         String   @id @default(uuid())
+  createdBy  String
+  propertyId String?
+  url        String
+  mime       String
+  createdAt  DateTime @default(now())
+
+  creator  User      @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  property Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+}
+
+model SyncBatch {
+  id        String   @id @default(uuid())
+  userId    String
+  payload   Json
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Roster {
+  id        String   @id @default(uuid())
+  date      DateTime
+  userId    String
+  shift     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
