@@ -2,6 +2,18 @@ import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { badRequest, notFound, forbidden } from '../utils/errors';
 
+function normalizeStatus(status: string): string {
+  if (status === 'canceled') return 'cancelled';
+  return status;
+}
+
+function normalizeRequestBody(body: any): any {
+  if (body && typeof body.status === 'string') {
+    return { ...body, status: normalizeStatus(body.status) };
+  }
+  return body;
+}
+
 const createAssignmentSchema = z.object({
   propertyId: z.string().uuid(),
   technicianId: z.string().uuid(),
@@ -74,8 +86,9 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     // Allow explicit status filter (overrides includeCanceled logic)
+    // Normalize "canceled" -> "cancelled" for query param
     if (query.status) {
-      where.status = query.status;
+      where.status = normalizeStatus(query.status);
     }
 
     if (query.priority) {
@@ -276,15 +289,17 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
       }
     }
 
+    // Normalize status spelling: "canceled" -> "cancelled"
+    const normalizedBody = normalizeRequestBody(request.body);
+
     // TECH ROLE: Can only update status (pending -> in_progress -> completed) and notes
     if (isTech) {
       // Check if tech is trying to cancel first (explicit 403)
-      const body = request.body as any;
-      if (body.status === 'cancelled') {
+      if (normalizedBody.status === 'cancelled') {
         return forbidden(reply, 'Technicians cannot cancel assignments');
       }
 
-      const result = techUpdateSchema.safeParse(request.body);
+      const result = techUpdateSchema.safeParse(normalizedBody);
       if (!result.success) {
         return badRequest(reply, 'Invalid request body', result.error.flatten());
       }
@@ -292,20 +307,16 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
       // Check if tech is trying to update forbidden fields
       const forbiddenFields = ['priority', 'scheduledDate', 'technicianId', 'propertyId', 'canceledReason', 'canceledAt'];
       for (const field of forbiddenFields) {
-        if (body[field] !== undefined) {
+        if (normalizedBody[field] !== undefined) {
           return forbidden(reply, `Technicians cannot update the '${field}' field`);
         }
       }
 
       // Validate status transitions for tech
+      // Note: cancel check already done above before schema validation
       if (result.data.status) {
         const currentStatus = existing.status;
         const newStatus = result.data.status;
-
-        // Tech cannot cancel
-        if (newStatus === 'cancelled') {
-          return forbidden(reply, 'Technicians cannot cancel assignments');
-        }
 
         // Valid transitions: pending -> in_progress -> completed
         const validTransitions: Record<string, string[]> = {
@@ -349,7 +360,7 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
 
     // ADMIN / REPAIR ROLE - can update any field
     if (isAdmin || isRepair) {
-      const result = adminUpdateSchema.safeParse(request.body);
+      const result = adminUpdateSchema.safeParse(normalizedBody);
       if (!result.success) {
         return badRequest(reply, 'Invalid request body', result.error.flatten());
       }
@@ -408,16 +419,15 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     // SUPERVISOR ROLE - can only update scheduledDate, priority, notes, and cancel
-    const result = supervisorUpdateSchema.safeParse(request.body);
+    const result = supervisorUpdateSchema.safeParse(normalizedBody);
     if (!result.success) {
       return badRequest(reply, 'Invalid request body', result.error.flatten());
     }
 
     // Block supervisor from updating forbidden fields
-    const body = request.body as any;
-    const forbiddenFields = ['technicianId', 'propertyId', 'completedAt'];
-    for (const field of forbiddenFields) {
-      if (body[field] !== undefined) {
+    const forbiddenFieldsSup = ['technicianId', 'propertyId', 'completedAt'];
+    for (const field of forbiddenFieldsSup) {
+      if (normalizedBody[field] !== undefined) {
         return forbidden(reply, `Supervisors cannot update the '${field}' field`);
       }
     }

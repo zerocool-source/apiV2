@@ -241,11 +241,19 @@ curl -s -X PATCH "http://localhost:5000/api/assignments/$ASSIGNMENT_ID" \
 # Expected: {"error":"FORBIDDEN","message":"Technicians cannot cancel assignments"}
 
 # Supervisor cancels assignment for own tech (success)
+# Note: Both "cancelled" and "canceled" spellings are accepted
 curl -s -X PATCH "http://localhost:5000/api/assignments/$ASSIGNMENT_ID" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"status": "cancelled", "canceledReason": "Customer requested reschedule"}'
 # Expected: status becomes "cancelled", canceledAt set, canceledReason set
+
+# Using American spelling "canceled" also works:
+curl -s -X PATCH "http://localhost:5000/api/assignments/$ASSIGNMENT_ID" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"status": "canceled", "canceledReason": "Pool closed for season"}'
+# Expected: same result - stored as "cancelled" internally
 
 # Supervisor tries to cancel other team's assignment (403)
 # First get an assignment from mid region
@@ -282,6 +290,7 @@ curl -s "http://localhost:5000/api/assignments?includeCanceled=true" \
     - Admin/Repair: can update/cancel any assignment
   - GET /api/assignments: excludes canceled by default; use ?includeCanceled=true to include
   - Cancel is idempotent (canceling already-canceled returns current record)
+  - **Status spelling:** API accepts both "cancelled" (British) and "canceled" (American). Internally stored as "cancelled"
 
 - **2026-01-26**: JWT stability improvements
   - JWT_SECRET is now REQUIRED (server fails fast if missing)
