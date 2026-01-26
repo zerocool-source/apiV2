@@ -1,4 +1,5 @@
 import { FastifyPluginAsync } from 'fastify';
+import fp from 'fastify-plugin';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { readFileSync } from 'fs';
@@ -15,7 +16,7 @@ function getPackageVersion(): string {
   }
 }
 
-const swaggerPlugin: FastifyPluginAsync = async (fastify) => {
+const swaggerPluginInternal: FastifyPluginAsync = async (fastify) => {
   const version = getPackageVersion();
 
   await fastify.register(swagger, {
@@ -133,4 +134,4 @@ const swaggerPlugin: FastifyPluginAsync = async (fastify) => {
   });
 };
 
-export default swaggerPlugin;
+export default fp(swaggerPluginInternal);

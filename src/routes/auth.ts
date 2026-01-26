@@ -28,23 +28,28 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         type: 'object',
         required: ['email', 'password'],
         properties: {
-          email: { type: 'string', format: 'email', example: 'user@example.com' },
-          password: { type: 'string', minLength: 6, example: 'password123' },
+          email: { type: 'string', format: 'email' },
+          password: { type: 'string', minLength: 6 },
           role: { type: 'string', enum: ['tech', 'supervisor', 'repair', 'admin'], default: 'tech' },
-          name: { type: 'string', example: 'John Doe' },
-          phone: { type: 'string', example: '555-1234' },
+          name: { type: 'string' },
+          phone: { type: 'string' },
         },
+        examples: [{
+          email: 'user@example.com',
+          password: 'password123',
+          name: 'John Doe',
+        }],
       },
       response: {
         201: {
           type: 'object',
           properties: {
-            user: { $ref: '#/components/schemas/User' },
+            user: { $ref: 'User#' },
             token: { type: 'string' },
           },
         },
-        400: { $ref: '#/components/schemas/Error' },
-        409: { $ref: '#/components/schemas/Error' },
+        400: { $ref: 'Error#' },
+        409: { $ref: 'Error#' },
       },
     },
   }, async (request, reply) => {
@@ -110,20 +115,24 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         type: 'object',
         required: ['email', 'password'],
         properties: {
-          email: { type: 'string', format: 'email', example: 'admin@breakpoint.local' },
-          password: { type: 'string', example: 'password123' },
+          email: { type: 'string', format: 'email' },
+          password: { type: 'string' },
         },
+        examples: [{
+          email: 'admin@breakpoint.local',
+          password: 'password123',
+        }],
       },
       response: {
         200: {
           type: 'object',
           properties: {
-            user: { $ref: '#/components/schemas/User' },
+            user: { $ref: 'User#' },
             token: { type: 'string', description: 'JWT Bearer token' },
           },
         },
-        400: { $ref: '#/components/schemas/Error' },
-        401: { $ref: '#/components/schemas/Error' },
+        400: { $ref: 'Error#' },
+        401: { $ref: 'Error#' },
       },
     },
   }, async (request, reply) => {
@@ -177,7 +186,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         200: {
           type: 'object',
           properties: {
-            message: { type: 'string', example: 'Logged out successfully' },
+            message: { type: 'string' },
           },
         },
       },

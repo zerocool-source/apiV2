@@ -11,7 +11,7 @@ const healthRoutes: FastifyPluginAsync = async (fastify) => {
         200: {
           type: 'object',
           properties: {
-            status: { type: 'string', example: 'ok' },
+            status: { type: 'string' },
             timestamp: { type: 'string', format: 'date-time' },
           },
         },

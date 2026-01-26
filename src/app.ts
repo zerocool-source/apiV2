@@ -7,6 +7,7 @@ import { env } from './utils/env';
 import prismaPlugin from './plugins/prisma';
 import jwtPlugin from './plugins/jwt';
 import rbacPlugin from './plugins/rbac';
+import schemasPlugin from './plugins/schemas';
 import swaggerPlugin from './plugins/swagger';
 
 // Routes
@@ -40,6 +41,11 @@ export async function buildApp(): Promise<FastifyInstance> {
     logger: {
       level: env.NODE_ENV === 'production' ? 'info' : 'debug',
     },
+    ajv: {
+      customOptions: {
+        strict: false,
+      },
+    },
   });
 
   // CORS
@@ -59,6 +65,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(prismaPlugin);
   await fastify.register(jwtPlugin);
   await fastify.register(rbacPlugin);
+  await fastify.register(schemasPlugin);
   await fastify.register(swaggerPlugin);
 
   // Routes
