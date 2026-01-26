@@ -2,18 +2,40 @@ import { FastifyPluginAsync } from 'fastify';
 
 const techniciansRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /api/technicians
+  // Supervisors see only their team, admin sees all
   fastify.get('/', {
-    preHandler: [fastify.requireAuth],
-  }, async () => {
+    preHandler: [fastify.requireRole(['supervisor', 'admin'])],
+  }, async (request) => {
+    const user = request.user;
+    const where: any = {
+      role: { in: ['tech', 'repair'] },
+    };
+
+    // Supervisors can only see their own team members
+    if (user.role === 'supervisor') {
+      where.technicianProfile = {
+        supervisorId: user.sub,
+      };
+    }
+
     const technicians = await fastify.prisma.user.findMany({
-      where: {
-        role: { in: ['tech', 'repair'] },
-      },
+      where,
       select: {
         id: true,
         email: true,
         role: true,
-        technicianProfile: true,
+        technicianProfile: {
+          select: {
+            id: true,
+            userId: true,
+            name: true,
+            phone: true,
+            truckId: true,
+            supervisorId: true,
+            region: true,
+            active: true,
+          },
+        },
       },
       orderBy: { email: 'asc' },
     });
@@ -24,12 +46,22 @@ const techniciansRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /api/technicians/locations
   fastify.get('/locations', {
     preHandler: [fastify.requireRole(['supervisor', 'admin'])],
-  }, async () => {
+  }, async (request) => {
+    const user = request.user;
+    const where: any = {
+      role: { in: ['tech', 'repair'] },
+    };
+
+    // Supervisors can only see their own team's locations
+    if (user.role === 'supervisor') {
+      where.technicianProfile = {
+        supervisorId: user.sub,
+      };
+    }
+
     // Get the latest location for each technician
     const technicians = await fastify.prisma.user.findMany({
-      where: {
-        role: { in: ['tech', 'repair'] },
-      },
+      where,
       select: {
         id: true,
         email: true,
@@ -52,11 +84,21 @@ const techniciansRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /api/technicians/status
   fastify.get('/status', {
     preHandler: [fastify.requireRole(['supervisor', 'admin'])],
-  }, async () => {
+  }, async (request) => {
+    const user = request.user;
+    const where: any = {
+      role: { in: ['tech', 'repair'] },
+    };
+
+    // Supervisors can only see their own team's status
+    if (user.role === 'supervisor') {
+      where.technicianProfile = {
+        supervisorId: user.sub,
+      };
+    }
+
     const technicians = await fastify.prisma.user.findMany({
-      where: {
-        role: { in: ['tech', 'repair'] },
-      },
+      where,
       select: {
         id: true,
         email: true,

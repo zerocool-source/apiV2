@@ -34,10 +34,21 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
 
     const where: any = {};
     
-    // Techs can only see their own assignments
     if (user.role === 'tech') {
+      // Techs can only see their own assignments
       where.technicianId = user.sub;
+    } else if (user.role === 'supervisor') {
+      // Supervisors can only see assignments for their team
+      where.technician = {
+        technicianProfile: {
+          supervisorId: user.sub,
+        },
+      };
+      if (query.technicianId) {
+        where.technicianId = query.technicianId;
+      }
     } else if (query.technicianId) {
+      // Admin can filter by technicianId
       where.technicianId = query.technicianId;
     }
 
@@ -75,8 +86,20 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /api/assignments/created
   fastify.get('/created', {
     preHandler: [fastify.requireRole(['supervisor', 'admin'])],
-  }, async () => {
+  }, async (request) => {
+    const user = request.user;
+    const where: any = {};
+
+    if (user.role === 'supervisor') {
+      where.technician = {
+        technicianProfile: {
+          supervisorId: user.sub,
+        },
+      };
+    }
+
     const assignments = await fastify.prisma.assignment.findMany({
+      where,
       include: {
         property: true,
         technician: {
@@ -126,6 +149,14 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
       return forbidden(reply, 'You can only view your own assignments');
     }
 
+    // Supervisors can only view their team's assignments
+    if (user.role === 'supervisor') {
+      const techProfile = assignment.technician.technicianProfile;
+      if (!techProfile || techProfile.supervisorId !== user.sub) {
+        return forbidden(reply, 'You can only view your team\'s assignments');
+      }
+    }
+
     return assignment;
   });
 
@@ -133,6 +164,7 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post('/', {
     preHandler: [fastify.requireRole(['supervisor', 'admin'])],
   }, async (request, reply) => {
+    const user = request.user;
     const result = createAssignmentSchema.safeParse(request.body);
     if (!result.success) {
       return badRequest(reply, 'Invalid request body', result.error.flatten());
@@ -148,12 +180,20 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
       return notFound(reply, 'Property not found');
     }
 
-    // Verify technician exists
+    // Verify technician exists and belongs to supervisor's team
     const technician = await fastify.prisma.user.findUnique({
       where: { id: technicianId },
+      include: { technicianProfile: true },
     });
     if (!technician) {
       return notFound(reply, 'Technician not found');
+    }
+
+    // Supervisor can only assign their own team members
+    if (user.role === 'supervisor') {
+      if (!technician.technicianProfile || technician.technicianProfile.supervisorId !== user.sub) {
+        return forbidden(reply, 'You can only create assignments for your team members');
+      }
     }
 
     const assignment = await fastify.prisma.assignment.create({
@@ -188,6 +228,11 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
 
     const existing = await fastify.prisma.assignment.findUnique({
       where: { id },
+      include: {
+        technician: {
+          include: { technicianProfile: true },
+        },
+      },
     });
 
     if (!existing) {
@@ -203,11 +248,30 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
       return forbidden(reply, 'You can only update your own assignments');
     }
 
+    // Supervisor can only update their team's assignments
+    if (user.role === 'supervisor') {
+      const techProfile = existing.technician.technicianProfile;
+      if (!techProfile || techProfile.supervisorId !== user.sub) {
+        return forbidden(reply, 'You can only update your team\'s assignments');
+      }
+    }
+
     // Validate request body based on role
     if (isSupervisorOrAdmin) {
       const result = supervisorUpdateSchema.safeParse(request.body);
       if (!result.success) {
         return badRequest(reply, 'Invalid request body', result.error.flatten());
+      }
+
+      // If changing technician, verify they belong to supervisor's team
+      if (result.data.technicianId && user.role === 'supervisor') {
+        const newTech = await fastify.prisma.user.findUnique({
+          where: { id: result.data.technicianId },
+          include: { technicianProfile: true },
+        });
+        if (!newTech?.technicianProfile || newTech.technicianProfile.supervisorId !== user.sub) {
+          return forbidden(reply, 'You can only assign to your team members');
+        }
       }
 
       const updateData: any = {};

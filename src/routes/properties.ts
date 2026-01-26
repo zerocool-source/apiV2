@@ -7,6 +7,7 @@ const createPropertySchema = z.object({
   address: z.string().min(1),
   latitude: z.number().optional(),
   longitude: z.number().optional(),
+  region: z.enum(['north', 'mid', 'south']).optional(),
   notes: z.string().optional(),
 });
 
@@ -35,8 +36,8 @@ const propertiesRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request) => {
     const user = request.user;
 
-    // Tech can only see properties that appear in their assignments
     if (user.role === 'tech') {
+      // Tech can only see properties that appear in their assignments
       const assignments = await fastify.prisma.assignment.findMany({
         where: { technicianId: user.sub },
         select: { propertyId: true },
@@ -56,7 +57,56 @@ const propertiesRoutes: FastifyPluginAsync = async (fastify) => {
       return properties;
     }
 
-    // Supervisor/admin can see all properties
+    if (user.role === 'supervisor') {
+      // Supervisor sees only properties tied to their team's assignments
+      // OR properties that match their region (from their profile)
+
+      // Get supervisor's profile to check their region
+      const supervisorProfile = await fastify.prisma.technicianProfile.findUnique({
+        where: { userId: user.sub },
+      });
+
+      // Get all assignments for the supervisor's team
+      const teamAssignments = await fastify.prisma.assignment.findMany({
+        where: {
+          technician: {
+            technicianProfile: {
+              supervisorId: user.sub,
+            },
+          },
+        },
+        select: { propertyId: true },
+      });
+
+      const assignedPropertyIds = [...new Set(teamAssignments.map(a => a.propertyId))];
+
+      // Build property query
+      const propertyWhere: any = {};
+      
+      if (assignedPropertyIds.length > 0 && supervisorProfile?.region) {
+        // Properties from team assignments OR matching region
+        propertyWhere.OR = [
+          { id: { in: assignedPropertyIds } },
+          { region: supervisorProfile.region },
+        ];
+      } else if (assignedPropertyIds.length > 0) {
+        propertyWhere.id = { in: assignedPropertyIds };
+      } else if (supervisorProfile?.region) {
+        propertyWhere.region = supervisorProfile.region;
+      } else {
+        // No team assignments and no region - return empty
+        return [];
+      }
+
+      const properties = await fastify.prisma.property.findMany({
+        where: propertyWhere,
+        orderBy: { name: 'asc' },
+      });
+
+      return properties;
+    }
+
+    // Admin can see all properties
     const properties = await fastify.prisma.property.findMany({
       orderBy: { name: 'asc' },
     });
@@ -73,7 +123,13 @@ const propertiesRoutes: FastifyPluginAsync = async (fastify) => {
     const property = await fastify.prisma.property.findUnique({
       where: { id },
       include: {
-        assignments: true,
+        assignments: {
+          include: {
+            technician: {
+              include: { technicianProfile: true },
+            },
+          },
+        },
       },
     });
 
@@ -89,7 +145,37 @@ const propertiesRoutes: FastifyPluginAsync = async (fastify) => {
       }
     }
 
-    return property;
+    // Supervisor can only see properties tied to their team or their region
+    if (user.role === 'supervisor') {
+      const supervisorProfile = await fastify.prisma.technicianProfile.findUnique({
+        where: { userId: user.sub },
+      });
+
+      const hasTeamAssignment = property.assignments.some(
+        a => a.technician.technicianProfile?.supervisorId === user.sub
+      );
+      const matchesRegion = supervisorProfile?.region && property.region === supervisorProfile.region;
+
+      if (!hasTeamAssignment && !matchesRegion) {
+        return notFound(reply, 'Property not found');
+      }
+    }
+
+    // Remove technician details from response to keep it clean
+    const { assignments, ...propertyData } = property;
+    return {
+      ...propertyData,
+      assignments: assignments.map(a => ({
+        id: a.id,
+        propertyId: a.propertyId,
+        technicianId: a.technicianId,
+        status: a.status,
+        priority: a.priority,
+        scheduledDate: a.scheduledDate,
+        completedAt: a.completedAt,
+        notes: a.notes,
+      })),
+    };
   });
 
   // POST /api/properties
