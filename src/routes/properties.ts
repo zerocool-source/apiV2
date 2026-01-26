@@ -33,6 +33,30 @@ const propertiesRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/', {
     preHandler: [fastify.requireAuth],
   }, async (request) => {
+    const user = request.user;
+
+    // Tech can only see properties that appear in their assignments
+    if (user.role === 'tech') {
+      const assignments = await fastify.prisma.assignment.findMany({
+        where: { technicianId: user.sub },
+        select: { propertyId: true },
+      });
+
+      const propertyIds = [...new Set(assignments.map(a => a.propertyId))];
+
+      if (propertyIds.length === 0) {
+        return [];
+      }
+
+      const properties = await fastify.prisma.property.findMany({
+        where: { id: { in: propertyIds } },
+        orderBy: { name: 'asc' },
+      });
+
+      return properties;
+    }
+
+    // Supervisor/admin can see all properties
     const properties = await fastify.prisma.property.findMany({
       orderBy: { name: 'asc' },
     });
@@ -44,6 +68,7 @@ const propertiesRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.requireAuth],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
+    const user = request.user;
     
     const property = await fastify.prisma.property.findUnique({
       where: { id },
@@ -54,6 +79,14 @@ const propertiesRoutes: FastifyPluginAsync = async (fastify) => {
 
     if (!property) {
       return notFound(reply, 'Property not found');
+    }
+
+    // Tech can only see properties they are assigned to
+    if (user.role === 'tech') {
+      const hasAssignment = property.assignments.some(a => a.technicianId === user.sub);
+      if (!hasAssignment) {
+        return notFound(reply, 'Property not found');
+      }
     }
 
     return property;

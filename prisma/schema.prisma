@@ -21,6 +21,12 @@ enum AssignmentStatus {
   cancelled
 }
 
+enum AssignmentPriority {
+  low
+  med
+  high
+}
+
 enum EmergencySeverity {
   low
   medium
@@ -110,15 +116,16 @@ model Property {
 }
 
 model Assignment {
-  id            String           @id @default(uuid())
+  id            String             @id @default(uuid())
   propertyId    String
   technicianId  String
-  status        AssignmentStatus @default(pending)
+  status        AssignmentStatus   @default(pending)
+  priority      AssignmentPriority @default(med)
   scheduledDate DateTime
   completedAt   DateTime?
   notes         String?
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
 
   property           Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   technician         User                @relation(fields: [technicianId], references: [id], onDelete: Cascade)
