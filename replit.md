@@ -121,6 +121,13 @@ npx tsx prisma/seed.ts
 
 ## Recent Changes
 
+- **2026-01-26**: Assignment priority & enhanced RBAC
+  - Added Assignment.priority field (low|med|high, default: med)
+  - Supervisor/admin can create assignments and edit all fields
+  - Technicians can only view their own assignments and PATCH status + notes
+  - GET /api/properties now filters for techs (only assigned properties)
+  - GET /api/technicians returns id, name, email for supervisor selection
+
 - **2026-01-26**: Initial API v2 implementation
   - Complete Fastify + Prisma setup
   - All endpoints implemented
