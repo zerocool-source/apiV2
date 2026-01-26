@@ -26,7 +26,7 @@ const jwtPlugin: FastifyPluginAsync = async (fastify) => {
   await fastify.register(fastifyJwt, {
     secret: env.JWT_SECRET,
     sign: {
-      expiresIn: '7d',
+      expiresIn: env.JWT_EXPIRES_IN,
     },
   });
 

@@ -49,12 +49,22 @@ The app runs on port 5000 via the "Start application" workflow.
 
 ### Environment Variables
 
-Set via Replit Secrets:
+**Required:**
 - `DATABASE_URL` - Auto-set by Replit PostgreSQL
-- `JWT_SECRET` - Secret for JWT signing
+- `JWT_SECRET` - **REQUIRED** - Secret for JWT signing (minimum 32 characters)
+  - In Replit: Add via Secrets tab
+  - In Render: Add as environment variable
+
+**Optional:**
+- `JWT_EXPIRES_IN` - Token expiration time (default: "7d")
 - `CORS_ORIGIN` - CORS allowed origins (default: *)
 - `PORT` - Server port (default: 5000)
 - `HOST` - Server host (default: 0.0.0.0)
+
+**Important:** The server will fail to start if `JWT_SECRET` is not set. Generate a secure secret:
+```bash
+openssl rand -hex 32
+```
 
 ## API Endpoints
 
@@ -202,7 +212,81 @@ curl -s -X POST http://localhost:5000/api/assignments \
 # Expected: {"error":"FORBIDDEN","message":"Insufficient permissions"}
 ```
 
+### Assignment Lifecycle Tests
+
+```bash
+# Get an assignment ID first
+ASSIGNMENT_ID=$(curl -s http://localhost:5000/api/assignments \
+  -H "Authorization: Bearer $TOKEN" | grep -o '"id":"[^"]*"' | head -1 | sed 's/"id":"//;s/"$//')
+
+# Tech updates status: pending -> in_progress (success)
+curl -s -X PATCH "http://localhost:5000/api/assignments/$ASSIGNMENT_ID" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TECH_TOKEN" \
+  -d '{"status": "in_progress"}'
+# Expected: status becomes "in_progress"
+
+# Tech updates status: in_progress -> completed (success)
+curl -s -X PATCH "http://localhost:5000/api/assignments/$ASSIGNMENT_ID" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TECH_TOKEN" \
+  -d '{"status": "completed"}'
+# Expected: status becomes "completed", completedAt auto-set
+
+# Tech tries to cancel (403 Forbidden)
+curl -s -X PATCH "http://localhost:5000/api/assignments/$ASSIGNMENT_ID" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TECH_TOKEN" \
+  -d '{"status": "cancelled"}'
+# Expected: {"error":"FORBIDDEN","message":"Technicians cannot cancel assignments"}
+
+# Supervisor cancels assignment for own tech (success)
+curl -s -X PATCH "http://localhost:5000/api/assignments/$ASSIGNMENT_ID" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"status": "cancelled", "canceledReason": "Customer requested reschedule"}'
+# Expected: status becomes "cancelled", canceledAt set, canceledReason set
+
+# Supervisor tries to cancel other team's assignment (403)
+# First get an assignment from mid region
+MID_TOKEN=$(curl -s -X POST http://localhost:5000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "supervisor.mid@breakpoint.local", "password": "password123"}' \
+  | grep -o '"token":"[^"]*"' | sed 's/"token":"//;s/"$//')
+
+# Try to cancel north team's assignment with mid supervisor token
+curl -s -X PATCH "http://localhost:5000/api/assignments/$ASSIGNMENT_ID" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $MID_TOKEN" \
+  -d '{"status": "cancelled"}'
+# Expected: {"error":"FORBIDDEN","message":"You can only update your team's assignments"}
+
+# GET /api/assignments excludes canceled by default
+curl -s http://localhost:5000/api/assignments \
+  -H "Authorization: Bearer $TOKEN"
+# Canceled assignments not shown
+
+# GET /api/assignments?includeCanceled=true includes canceled
+curl -s "http://localhost:5000/api/assignments?includeCanceled=true" \
+  -H "Authorization: Bearer $TOKEN"
+# Canceled assignments included
+```
+
 ## Recent Changes
+
+- **2026-01-26**: Assignment lifecycle with cancel/status RBAC
+  - Added Assignment.canceledAt and Assignment.canceledReason fields
+  - PATCH /api/assignments/:id:
+    - Tech: can update status (pending -> in_progress -> completed) and notes; cannot cancel
+    - Supervisor: can update scheduledDate, priority, notes; can cancel own team's assignments
+    - Admin/Repair: can update/cancel any assignment
+  - GET /api/assignments: excludes canceled by default; use ?includeCanceled=true to include
+  - Cancel is idempotent (canceling already-canceled returns current record)
+
+- **2026-01-26**: JWT stability improvements
+  - JWT_SECRET is now REQUIRED (server fails fast if missing)
+  - JWT_EXPIRES_IN env var support (default: "7d")
+  - Updated env documentation with Replit/Render instructions
 
 - **2026-01-26**: Supervisor-Technician roster management
   - GET /api/technicians: supervisor sees only their team, repair sees all, tech sees self

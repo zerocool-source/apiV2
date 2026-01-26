@@ -11,16 +11,24 @@ const createAssignmentSchema = z.object({
 });
 
 const supervisorUpdateSchema = z.object({
+  status: z.enum(['cancelled']).optional(),
+  priority: z.enum(['low', 'med', 'high']).optional(),
+  scheduledDate: z.string().datetime().optional(),
+  notes: z.string().optional(),
+  canceledReason: z.string().optional(),
+});
+
+const adminUpdateSchema = z.object({
   status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']).optional(),
   priority: z.enum(['low', 'med', 'high']).optional(),
   scheduledDate: z.string().datetime().optional(),
   technicianId: z.string().uuid().optional(),
   notes: z.string().optional(),
-  completedAt: z.string().datetime().optional(),
+  canceledReason: z.string().optional(),
 });
 
 const techUpdateSchema = z.object({
-  status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']).optional(),
+  status: z.enum(['pending', 'in_progress', 'completed']).optional(),
   notes: z.string().optional(),
 });
 
@@ -30,15 +38,25 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.requireAuth],
   }, async (request) => {
     const user = request.user;
-    const query = request.query as { technicianId?: string; propertyId?: string; status?: string; priority?: string };
+    const query = request.query as { 
+      technicianId?: string; 
+      propertyId?: string; 
+      status?: string; 
+      priority?: string;
+      includeCanceled?: string;
+    };
 
     const where: any = {};
     
+    // By default, exclude canceled assignments unless ?includeCanceled=true
+    const includeCanceled = query.includeCanceled === 'true';
+    if (!includeCanceled) {
+      where.status = { not: 'cancelled' };
+    }
+    
     if (user.role === 'tech') {
-      // Techs can only see their own assignments
       where.technicianId = user.sub;
     } else if (user.role === 'supervisor') {
-      // Supervisors can only see assignments for their team
       where.technician = {
         technicianProfile: {
           supervisorId: user.sub,
@@ -48,7 +66,6 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
         where.technicianId = query.technicianId;
       }
     } else if (query.technicianId) {
-      // Admin can filter by technicianId
       where.technicianId = query.technicianId;
     }
 
@@ -56,6 +73,7 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
       where.propertyId = query.propertyId;
     }
 
+    // Allow explicit status filter (overrides includeCanceled logic)
     if (query.status) {
       where.status = query.status;
     }
@@ -88,7 +106,13 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.requireRole(['supervisor', 'admin'])],
   }, async (request) => {
     const user = request.user;
+    const query = request.query as { includeCanceled?: string };
     const where: any = {};
+
+    const includeCanceled = query.includeCanceled === 'true';
+    if (!includeCanceled) {
+      where.status = { not: 'cancelled' };
+    }
 
     if (user.role === 'supervisor') {
       where.technician = {
@@ -144,12 +168,10 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
       return notFound(reply, 'Assignment not found');
     }
 
-    // Techs can only view their own assignments
     if (user.role === 'tech' && assignment.technicianId !== user.sub) {
       return forbidden(reply, 'You can only view your own assignments');
     }
 
-    // Supervisors can only view their team's assignments
     if (user.role === 'supervisor') {
       const techProfile = assignment.technician.technicianProfile;
       if (!techProfile || techProfile.supervisorId !== user.sub) {
@@ -172,7 +194,6 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
 
     const { propertyId, technicianId, scheduledDate, priority, notes } = result.data;
 
-    // Verify property exists
     const property = await fastify.prisma.property.findUnique({
       where: { id: propertyId },
     });
@@ -180,7 +201,6 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
       return notFound(reply, 'Property not found');
     }
 
-    // Verify technician exists and belongs to supervisor's team
     const technician = await fastify.prisma.user.findUnique({
       where: { id: technicianId },
       include: { technicianProfile: true },
@@ -189,8 +209,6 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
       return notFound(reply, 'Technician not found');
     }
 
-    // Supervisor can only assign their own team members
-    // Repair/Admin can assign anyone
     if (user.role === 'supervisor') {
       if (!technician.technicianProfile || technician.technicianProfile.supervisorId !== user.sub) {
         return forbidden(reply, 'You can only create assignments for your team members');
@@ -240,8 +258,9 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
       return notFound(reply, 'Assignment not found');
     }
 
-    // Determine allowed fields based on role
-    const isSupervisorOrAdmin = user.role === 'supervisor' || user.role === 'admin';
+    const isAdmin = user.role === 'admin';
+    const isRepair = user.role === 'repair';
+    const isSupervisor = user.role === 'supervisor';
     const isTech = user.role === 'tech';
 
     // Tech can only update their own assignments
@@ -250,73 +269,64 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     // Supervisor can only update their team's assignments
-    if (user.role === 'supervisor') {
+    if (isSupervisor) {
       const techProfile = existing.technician.technicianProfile;
       if (!techProfile || techProfile.supervisorId !== user.sub) {
         return forbidden(reply, 'You can only update your team\'s assignments');
       }
     }
 
-    // Validate request body based on role
-    if (isSupervisorOrAdmin) {
-      const result = supervisorUpdateSchema.safeParse(request.body);
-      if (!result.success) {
-        return badRequest(reply, 'Invalid request body', result.error.flatten());
+    // TECH ROLE: Can only update status (pending -> in_progress -> completed) and notes
+    if (isTech) {
+      // Check if tech is trying to cancel first (explicit 403)
+      const body = request.body as any;
+      if (body.status === 'cancelled') {
+        return forbidden(reply, 'Technicians cannot cancel assignments');
       }
 
-      // If changing technician, verify they belong to supervisor's team
-      if (result.data.technicianId && user.role === 'supervisor') {
-        const newTech = await fastify.prisma.user.findUnique({
-          where: { id: result.data.technicianId },
-          include: { technicianProfile: true },
-        });
-        if (!newTech?.technicianProfile || newTech.technicianProfile.supervisorId !== user.sub) {
-          return forbidden(reply, 'You can only assign to your team members');
-        }
-      }
-
-      const updateData: any = {};
-      if (result.data.status) updateData.status = result.data.status;
-      if (result.data.priority) updateData.priority = result.data.priority;
-      if (result.data.scheduledDate) updateData.scheduledDate = new Date(result.data.scheduledDate);
-      if (result.data.technicianId) updateData.technicianId = result.data.technicianId;
-      if (result.data.notes !== undefined) updateData.notes = result.data.notes;
-      if (result.data.completedAt) updateData.completedAt = new Date(result.data.completedAt);
-
-      const assignment = await fastify.prisma.assignment.update({
-        where: { id },
-        data: updateData,
-        include: {
-          property: true,
-          technician: {
-            select: {
-              id: true,
-              email: true,
-              technicianProfile: true,
-            },
-          },
-        },
-      });
-
-      return assignment;
-    } else if (isTech) {
-      // Tech can only update status and notes
       const result = techUpdateSchema.safeParse(request.body);
       if (!result.success) {
         return badRequest(reply, 'Invalid request body', result.error.flatten());
       }
 
       // Check if tech is trying to update forbidden fields
-      const body = request.body as any;
-      const forbiddenFields = ['priority', 'scheduledDate', 'technicianId', 'completedAt', 'propertyId'];
+      const forbiddenFields = ['priority', 'scheduledDate', 'technicianId', 'propertyId', 'canceledReason', 'canceledAt'];
       for (const field of forbiddenFields) {
         if (body[field] !== undefined) {
           return forbidden(reply, `Technicians cannot update the '${field}' field`);
         }
       }
 
+      // Validate status transitions for tech
+      if (result.data.status) {
+        const currentStatus = existing.status;
+        const newStatus = result.data.status;
+
+        // Tech cannot cancel
+        if (newStatus === 'cancelled') {
+          return forbidden(reply, 'Technicians cannot cancel assignments');
+        }
+
+        // Valid transitions: pending -> in_progress -> completed
+        const validTransitions: Record<string, string[]> = {
+          pending: ['in_progress'],
+          in_progress: ['completed'],
+          completed: [],
+          cancelled: [],
+        };
+
+        if (!validTransitions[currentStatus]?.includes(newStatus)) {
+          return badRequest(reply, `Invalid status transition from '${currentStatus}' to '${newStatus}'`);
+        }
+      }
+
       const updateData: any = {};
-      if (result.data.status) updateData.status = result.data.status;
+      if (result.data.status) {
+        updateData.status = result.data.status;
+        if (result.data.status === 'completed') {
+          updateData.completedAt = new Date();
+        }
+      }
       if (result.data.notes !== undefined) updateData.notes = result.data.notes;
 
       const assignment = await fastify.prisma.assignment.update({
@@ -335,9 +345,117 @@ const assignmentsRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       return assignment;
-    } else {
-      return forbidden(reply, 'Insufficient permissions');
     }
+
+    // ADMIN / REPAIR ROLE - can update any field
+    if (isAdmin || isRepair) {
+      const result = adminUpdateSchema.safeParse(request.body);
+      if (!result.success) {
+        return badRequest(reply, 'Invalid request body', result.error.flatten());
+      }
+
+      // If changing technician, verify the new tech exists
+      if (result.data.technicianId) {
+        const newTech = await fastify.prisma.user.findUnique({
+          where: { id: result.data.technicianId },
+          include: { technicianProfile: true },
+        });
+        if (!newTech) {
+          return notFound(reply, 'Technician not found');
+        }
+      }
+
+      const updateData: any = {};
+      
+      if (result.data.status === 'cancelled') {
+        if (existing.status === 'cancelled') {
+          return existing;
+        }
+        updateData.status = 'cancelled';
+        updateData.canceledAt = new Date();
+        updateData.completedAt = null;
+        if (result.data.canceledReason) {
+          updateData.canceledReason = result.data.canceledReason;
+        }
+      } else {
+        if (result.data.status) updateData.status = result.data.status;
+        if (result.data.priority) updateData.priority = result.data.priority;
+        if (result.data.scheduledDate) updateData.scheduledDate = new Date(result.data.scheduledDate);
+        if (result.data.technicianId) updateData.technicianId = result.data.technicianId;
+        if (result.data.notes !== undefined) updateData.notes = result.data.notes;
+        
+        if (result.data.status === 'completed' && !existing.completedAt) {
+          updateData.completedAt = new Date();
+        }
+      }
+
+      const assignment = await fastify.prisma.assignment.update({
+        where: { id },
+        data: updateData,
+        include: {
+          property: true,
+          technician: {
+            select: {
+              id: true,
+              email: true,
+              technicianProfile: true,
+            },
+          },
+        },
+      });
+
+      return assignment;
+    }
+
+    // SUPERVISOR ROLE - can only update scheduledDate, priority, notes, and cancel
+    const result = supervisorUpdateSchema.safeParse(request.body);
+    if (!result.success) {
+      return badRequest(reply, 'Invalid request body', result.error.flatten());
+    }
+
+    // Block supervisor from updating forbidden fields
+    const body = request.body as any;
+    const forbiddenFields = ['technicianId', 'propertyId', 'completedAt'];
+    for (const field of forbiddenFields) {
+      if (body[field] !== undefined) {
+        return forbidden(reply, `Supervisors cannot update the '${field}' field`);
+      }
+    }
+
+    const updateData: any = {};
+    
+    if (result.data.status === 'cancelled') {
+      if (existing.status === 'cancelled') {
+        return existing;
+      }
+      updateData.status = 'cancelled';
+      updateData.canceledAt = new Date();
+      updateData.completedAt = null;
+      if (result.data.canceledReason) {
+        updateData.canceledReason = result.data.canceledReason;
+      }
+    } else {
+      if (result.data.priority) updateData.priority = result.data.priority;
+      if (result.data.scheduledDate) updateData.scheduledDate = new Date(result.data.scheduledDate);
+      if (result.data.notes !== undefined) updateData.notes = result.data.notes;
+    }
+
+    const assignment = await fastify.prisma.assignment.update({
+      where: { id },
+      data: updateData,
+      include: {
+        property: true,
+        technician: {
+          select: {
+            id: true,
+            email: true,
+            technicianProfile: true,
+          },
+        },
+      },
+    });
+
+    return assignment;
   });
 };
 

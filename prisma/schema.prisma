@@ -125,16 +125,18 @@ model Property {
 }
 
 model Assignment {
-  id            String             @id @default(uuid())
-  propertyId    String
-  technicianId  String
-  status        AssignmentStatus   @default(pending)
-  priority      AssignmentPriority @default(med)
-  scheduledDate DateTime
-  completedAt   DateTime?
-  notes         String?
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
+  id             String             @id @default(uuid())
+  propertyId     String
+  technicianId   String
+  status         AssignmentStatus   @default(pending)
+  priority       AssignmentPriority @default(med)
+  scheduledDate  DateTime
+  completedAt    DateTime?
+  canceledAt     DateTime?
+  canceledReason String?
+  notes          String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
 
   property           Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   technician         User                @relation(fields: [technicianId], references: [id], onDelete: Cascade)
