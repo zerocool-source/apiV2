@@ -35,6 +35,7 @@ import syncRoutes from './routes/sync';
 import uploadsRoutes from './routes/uploads';
 import serviceRepairsRoutes from './routes/service-repairs';
 import chemicalOrdersRoutes from './routes/chemical-orders';
+import techOpsRoutes from './routes/tech-ops';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const fastify = Fastify({
@@ -93,6 +94,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(uploadsRoutes, { prefix: '/api/uploads' });
   await fastify.register(serviceRepairsRoutes, { prefix: '/api/service-repairs' });
   await fastify.register(chemicalOrdersRoutes, { prefix: '/api/chemical-orders' });
+  await fastify.register(techOpsRoutes, { prefix: '/api/tech-ops' });
 
   // Global error handler
   fastify.setErrorHandler((error, request, reply) => {

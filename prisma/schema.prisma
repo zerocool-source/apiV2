@@ -62,24 +62,26 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  technicianProfile TechnicianProfile?
-  assignments       Assignment[]
-  propertyChannels  PropertyChannel[]
-  messagesSent      Message[]          @relation("MessageFrom")
-  messagesReceived  Message[]          @relation("MessageTo")
-  emergencyReports  EmergencyReport[]
-  locationPings     LocationPing[]
-  technicianStatus  TechnicianStatus?
-  inspections       Inspection[]
-  alerts            Alert[]
-  repairRequests    RepairRequest[]
-  serviceRepairs    ServiceRepair[]
-  chemicalOrders    ChemicalOrder[]
-  jobs              Job[]
-  estimates         Estimate[]
-  timeEntries       TimeEntry[]
-  uploads           Upload[]
-  syncBatches       SyncBatch[]
+  technicianProfile  TechnicianProfile?
+  assignments        Assignment[]
+  propertyChannels   PropertyChannel[]
+  messagesSent       Message[]          @relation("MessageFrom")
+  messagesReceived   Message[]          @relation("MessageTo")
+  emergencyReports   EmergencyReport[]
+  locationPings      LocationPing[]
+  technicianStatus   TechnicianStatus?
+  inspections        Inspection[]
+  alerts             Alert[]
+  repairRequests     RepairRequest[]
+  serviceRepairs     ServiceRepair[]
+  chemicalOrders     ChemicalOrder[]
+  jobs               Job[]
+  estimates          Estimate[]
+  timeEntries        TimeEntry[]
+  uploads            Upload[]
+  syncBatches        SyncBatch[]
+  techOpsCreated     TechOpsEntry[]     @relation("TechOpsCreator")
+  techOpsReviewed    TechOpsEntry[]     @relation("TechOpsReviewer")
 }
 
 model TechnicianProfile {
@@ -122,6 +124,7 @@ model Property {
   jobs               Job[]
   uploads            Upload[]
   technicianStatuses TechnicianStatus[]
+  techOpsEntries     TechOpsEntry[]
 }
 
 model Assignment {
@@ -407,4 +410,51 @@ model Roster {
   shift     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+enum TechOpsEntryType {
+  repairs_needed
+  chemical_issue
+  equipment_failure
+  safety_concern
+  general_note
+}
+
+enum TechOpsPriority {
+  normal
+  urgent
+}
+
+enum TechOpsStatus {
+  pending
+  in_progress
+  resolved
+  dismissed
+}
+
+model TechOpsEntry {
+  id              String           @id @default(uuid())
+  entryType       TechOpsEntryType
+  technicianName  String?
+  technicianId    String?
+  propertyId      String?
+  propertyName    String?
+  propertyAddress String?
+  description     String
+  notes           String?
+  priority        TechOpsPriority  @default(normal)
+  status          TechOpsStatus    @default(pending)
+  isRead          Boolean          @default(false)
+  chemicals       Json?
+  quantity        Float?
+  issueType       String?
+  photos          String[]
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  technician User?     @relation("TechOpsCreator", fields: [technicianId], references: [id], onDelete: SetNull)
+  reviewer   User?     @relation("TechOpsReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  property   Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
 }

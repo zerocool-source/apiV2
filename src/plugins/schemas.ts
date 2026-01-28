@@ -66,6 +66,36 @@ const schemasPluginInternal: FastifyPluginAsync = async (fastify) => {
       active: { type: 'boolean' },
     },
   });
+
+  fastify.addSchema({
+    $id: 'TechOpsEntry',
+    type: 'object',
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      entryType: { type: 'string', enum: ['repairs_needed', 'chemical_issue', 'equipment_failure', 'safety_concern', 'general_note'] },
+      technicianName: { type: 'string', nullable: true },
+      technicianId: { type: 'string', format: 'uuid', nullable: true },
+      propertyId: { type: 'string', format: 'uuid', nullable: true },
+      propertyName: { type: 'string', nullable: true },
+      propertyAddress: { type: 'string', nullable: true },
+      description: { type: 'string' },
+      notes: { type: 'string', nullable: true },
+      priority: { type: 'string', enum: ['normal', 'urgent'] },
+      status: { type: 'string', enum: ['pending', 'in_progress', 'resolved', 'dismissed'] },
+      isRead: { type: 'boolean' },
+      chemicals: { type: 'object', nullable: true },
+      quantity: { type: 'number', nullable: true },
+      issueType: { type: 'string', nullable: true },
+      photos: { type: 'array', items: { type: 'string' } },
+      reviewedBy: { type: 'string', format: 'uuid', nullable: true },
+      reviewedAt: { type: 'string', format: 'date-time', nullable: true },
+      createdAt: { type: 'string', format: 'date-time' },
+      updatedAt: { type: 'string', format: 'date-time' },
+      technician: { type: 'object', nullable: true },
+      reviewer: { type: 'object', nullable: true },
+      property: { type: 'object', nullable: true },
+    },
+  });
 };
 
 export default fp(schemasPluginInternal);
