@@ -19,6 +19,9 @@
     "esbuild": "^0.25.0",
     "@vitejs/plugin-react": "^4.7.0",
     "@replit/vite-plugin-runtime-error-modal": "^0.0.3",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.17",
     "@fastify/cors": "^11.2.0",
     "@fastify/jwt": "^10.0.0",
     "@fastify/multipart": "^9.4.0",
@@ -109,10 +112,7 @@
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
     "@types/ws": "^8.5.13",
-    "autoprefixer": "^10.4.20",
     "drizzle-kit": "^0.31.8",
-    "postcss": "^8.4.47",
-    "tailwindcss": "^3.4.17",
     "typescript": "5.6.3"
   },
   "overrides": {
