@@ -2,28 +2,70 @@ import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { forbidden, notFound } from '../utils/errors';
 
+// All entry types matching Admin App
+const entryTypes = [
+  'repairs_needed',
+  'service_repairs',
+  'chemical_order',
+  'chemicals_dropoff',
+  'windy_day_cleanup',
+  'report_issue',
+  'supervisor_concerns',
+  'add_notes',
+  'chemical_issue',
+  'equipment_failure',
+  'safety_concern',
+  'general_note',
+] as const;
+
+const priorities = ['low', 'normal', 'high', 'urgent'] as const;
+const statuses = ['pending', 'in_progress', 'reviewed', 'resolved', 'completed', 'cancelled', 'archived', 'dismissed'] as const;
+const orderStatuses = ['pending', 'sent_to_vendor', 'confirmed', 'delivered'] as const;
+
 const createTechOpsSchema = z.object({
-  entryType: z.enum(['repairs_needed', 'chemical_issue', 'equipment_failure', 'safety_concern', 'general_note']),
+  entryType: z.enum(entryTypes),
   technicianName: z.string().optional(),
   technicianId: z.string().uuid().optional(),
+  positionType: z.string().optional(), // service_technician, supervisor, repair_technician
   propertyId: z.string().uuid().optional(),
   propertyName: z.string().optional(),
   propertyAddress: z.string().optional(),
-  description: z.string().min(1, 'Description is required'),
+  issueTitle: z.string().optional(),
+  description: z.string().optional(),
   notes: z.string().optional(),
-  priority: z.enum(['normal', 'urgent']).default('normal'),
-  chemicals: z.any().optional(),
-  quantity: z.number().optional(),
+  priority: z.enum(priorities).default('normal'),
+  chemicals: z.string().optional(),
+  quantity: z.string().optional(),
   issueType: z.string().optional(),
   photos: z.array(z.string()).optional(),
+  // Vendor tracking
+  vendorId: z.string().optional(),
+  vendorName: z.string().optional(),
+  // Cost tracking
+  partsCost: z.number().optional(),
 });
 
 const updateTechOpsSchema = z.object({
-  status: z.enum(['pending', 'in_progress', 'resolved', 'dismissed']).optional(),
+  status: z.enum(statuses).optional(),
   isRead: z.boolean().optional(),
   notes: z.string().optional(),
+  priority: z.enum(priorities).optional(),
   reviewedBy: z.string().uuid().optional(),
   reviewedAt: z.string().datetime().optional(),
+  resolvedBy: z.string().optional(),
+  resolvedAt: z.string().datetime().optional(),
+  resolutionNotes: z.string().optional(),
+  // Vendor & order tracking
+  vendorId: z.string().optional(),
+  vendorName: z.string().optional(),
+  orderStatus: z.enum(orderStatuses).optional(),
+  // Cost tracking
+  partsCost: z.number().optional(),
+  commissionPercent: z.number().optional(),
+  commissionAmount: z.number().optional(),
+  // Estimate conversion
+  convertedToEstimateId: z.string().optional(),
+  convertedAt: z.string().datetime().optional(),
 });
 
 const techOpsRoutes: FastifyPluginAsync = async (fastify) => {
@@ -40,17 +82,17 @@ const techOpsRoutes: FastifyPluginAsync = async (fastify) => {
         properties: {
           entryType: {
             type: 'string',
-            enum: ['repairs_needed', 'chemical_issue', 'equipment_failure', 'safety_concern', 'general_note'],
+            enum: ['repairs_needed', 'service_repairs', 'chemical_order', 'chemicals_dropoff', 'windy_day_cleanup', 'report_issue', 'supervisor_concerns', 'add_notes', 'chemical_issue', 'equipment_failure', 'safety_concern', 'general_note'],
             description: 'Filter by entry type',
           },
           status: {
             type: 'string',
-            enum: ['pending', 'in_progress', 'resolved', 'dismissed'],
+            enum: ['pending', 'in_progress', 'reviewed', 'resolved', 'completed', 'cancelled', 'archived', 'dismissed'],
             description: 'Filter by status',
           },
           priority: {
             type: 'string',
-            enum: ['normal', 'urgent'],
+            enum: ['low', 'normal', 'high', 'urgent'],
             description: 'Filter by priority',
           },
           propertyId: {
@@ -245,24 +287,29 @@ const techOpsRoutes: FastifyPluginAsync = async (fastify) => {
       security: [{ bearerAuth: [] }],
       body: {
         type: 'object',
-        required: ['entryType', 'description'],
+        required: ['entryType'],
         properties: {
           entryType: {
             type: 'string',
-            enum: ['repairs_needed', 'chemical_issue', 'equipment_failure', 'safety_concern', 'general_note'],
+            enum: ['repairs_needed', 'service_repairs', 'chemical_order', 'chemicals_dropoff', 'windy_day_cleanup', 'report_issue', 'supervisor_concerns', 'add_notes', 'chemical_issue', 'equipment_failure', 'safety_concern', 'general_note'],
           },
           technicianName: { type: 'string' },
           technicianId: { type: 'string', format: 'uuid' },
+          positionType: { type: 'string' },
           propertyId: { type: 'string', format: 'uuid' },
           propertyName: { type: 'string' },
           propertyAddress: { type: 'string' },
-          description: { type: 'string', minLength: 1 },
+          issueTitle: { type: 'string' },
+          description: { type: 'string' },
           notes: { type: 'string' },
-          priority: { type: 'string', enum: ['normal', 'urgent'], default: 'normal' },
-          chemicals: { type: 'object' },
-          quantity: { type: 'number' },
+          priority: { type: 'string', enum: ['low', 'normal', 'high', 'urgent'], default: 'normal' },
+          chemicals: { type: 'string' },
+          quantity: { type: 'string' },
           issueType: { type: 'string' },
           photos: { type: 'array', items: { type: 'string' } },
+          vendorId: { type: 'string' },
+          vendorName: { type: 'string' },
+          partsCost: { type: 'number' },
         },
       },
       response: {
@@ -302,9 +349,11 @@ const techOpsRoutes: FastifyPluginAsync = async (fastify) => {
         entryType: data.entryType,
         technicianName,
         technicianId,
+        positionType: data.positionType,
         propertyId: data.propertyId,
         propertyName: data.propertyName,
         propertyAddress: data.propertyAddress,
+        issueTitle: data.issueTitle,
         description: data.description,
         notes: data.notes,
         priority: data.priority,
@@ -312,6 +361,9 @@ const techOpsRoutes: FastifyPluginAsync = async (fastify) => {
         quantity: data.quantity,
         issueType: data.issueType,
         photos: data.photos || [],
+        vendorId: data.vendorId,
+        vendorName: data.vendorName,
+        partsCost: data.partsCost,
       },
       include: {
         technician: {
@@ -356,9 +408,19 @@ const techOpsRoutes: FastifyPluginAsync = async (fastify) => {
       body: {
         type: 'object',
         properties: {
-          status: { type: 'string', enum: ['pending', 'in_progress', 'resolved', 'dismissed'] },
+          status: { type: 'string', enum: ['pending', 'in_progress', 'reviewed', 'resolved', 'completed', 'cancelled', 'archived', 'dismissed'] },
           isRead: { type: 'boolean' },
           notes: { type: 'string' },
+          priority: { type: 'string', enum: ['low', 'normal', 'high', 'urgent'] },
+          resolvedBy: { type: 'string' },
+          resolutionNotes: { type: 'string' },
+          vendorId: { type: 'string' },
+          vendorName: { type: 'string' },
+          orderStatus: { type: 'string', enum: ['pending', 'sent_to_vendor', 'confirmed', 'delivered'] },
+          partsCost: { type: 'number' },
+          commissionPercent: { type: 'number' },
+          commissionAmount: { type: 'number' },
+          convertedToEstimateId: { type: 'string' },
         },
       },
       response: {
@@ -386,10 +448,19 @@ const techOpsRoutes: FastifyPluginAsync = async (fastify) => {
     const user = request.user!;
     const updateData: any = { ...parsed.data };
 
-    // If status is being changed to resolved or dismissed, mark as reviewed
-    if (updateData.status === 'resolved' || updateData.status === 'dismissed') {
+    // Handle datetime conversions
+    if (updateData.convertedAt) {
+      updateData.convertedAt = new Date(updateData.convertedAt);
+    }
+
+    // If status is being changed to resolved, completed, or dismissed, mark as reviewed
+    if (['resolved', 'completed', 'dismissed', 'archived'].includes(updateData.status)) {
       updateData.reviewedBy = user.sub;
       updateData.reviewedAt = new Date();
+
+      if (updateData.status === 'resolved' || updateData.status === 'completed') {
+        updateData.resolvedAt = new Date();
+      }
     }
 
     const entry = await fastify.prisma.techOpsEntry.update({
@@ -461,6 +532,218 @@ const techOpsRoutes: FastifyPluginAsync = async (fastify) => {
 
     await fastify.prisma.techOpsEntry.delete({ where: { id } });
     return reply.status(204).send();
+  });
+
+  // POST /api/tech-ops/:id/review - Mark entry as reviewed
+  fastify.post('/:id/review', {
+    preHandler: [fastify.requireRole(['supervisor', 'admin'])],
+    schema: {
+      tags: ['TechOps'],
+      summary: 'Mark tech ops entry as reviewed',
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string', format: 'uuid' } },
+      },
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const user = request.user!;
+
+    const entry = await fastify.prisma.techOpsEntry.update({
+      where: { id },
+      data: {
+        status: 'reviewed',
+        isRead: true,
+        reviewedBy: user.sub,
+        reviewedAt: new Date(),
+      },
+    });
+    return entry;
+  });
+
+  // POST /api/tech-ops/:id/archive - Archive entry
+  fastify.post('/:id/archive', {
+    preHandler: [fastify.requireRole(['supervisor', 'admin'])],
+    schema: {
+      tags: ['TechOps'],
+      summary: 'Archive tech ops entry',
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string', format: 'uuid' } },
+      },
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const user = request.user!;
+
+    const entry = await fastify.prisma.techOpsEntry.update({
+      where: { id },
+      data: {
+        status: 'archived',
+        reviewedBy: user.sub,
+        reviewedAt: new Date(),
+      },
+    });
+    return entry;
+  });
+
+  // POST /api/tech-ops/:id/no-charge - Mark as completed with no charge
+  fastify.post('/:id/no-charge', {
+    preHandler: [fastify.requireRole(['supervisor', 'admin'])],
+    schema: {
+      tags: ['TechOps'],
+      summary: 'Mark entry as completed with no charge',
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string', format: 'uuid' } },
+      },
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const user = request.user!;
+
+    const entry = await fastify.prisma.techOpsEntry.update({
+      where: { id },
+      data: {
+        status: 'completed',
+        reviewedBy: user.sub,
+        reviewedAt: new Date(),
+        resolvedAt: new Date(),
+        resolutionNotes: 'No charge',
+      },
+    });
+    return entry;
+  });
+
+  // POST /api/tech-ops/:id/assign-vendor - Assign vendor to chemical order
+  fastify.post('/:id/assign-vendor', {
+    preHandler: [fastify.requireRole(['supervisor', 'admin'])],
+    schema: {
+      tags: ['TechOps'],
+      summary: 'Assign vendor to chemical order',
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string', format: 'uuid' } },
+      },
+      body: {
+        type: 'object',
+        required: ['vendorId', 'vendorName'],
+        properties: {
+          vendorId: { type: 'string' },
+          vendorName: { type: 'string' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { vendorId, vendorName } = request.body as { vendorId: string; vendorName: string };
+
+    const entry = await fastify.prisma.techOpsEntry.update({
+      where: { id },
+      data: { vendorId, vendorName },
+    });
+    return entry;
+  });
+
+  // POST /api/tech-ops/:id/update-order-status - Update order status
+  fastify.post('/:id/update-order-status', {
+    preHandler: [fastify.requireRole(['supervisor', 'admin'])],
+    schema: {
+      tags: ['TechOps'],
+      summary: 'Update chemical order status',
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string', format: 'uuid' } },
+      },
+      body: {
+        type: 'object',
+        required: ['orderStatus'],
+        properties: {
+          orderStatus: { type: 'string', enum: ['pending', 'sent_to_vendor', 'confirmed', 'delivered'] },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { orderStatus } = request.body as { orderStatus: string };
+
+    const updateData: any = { orderStatus };
+    if (orderStatus === 'delivered') {
+      updateData.status = 'completed';
+      updateData.resolvedAt = new Date();
+    }
+
+    const entry = await fastify.prisma.techOpsEntry.update({
+      where: { id },
+      data: updateData,
+    });
+    return entry;
+  });
+
+  // POST /api/tech-ops/:id/convert-to-estimate - Convert to estimate
+  fastify.post('/:id/convert-to-estimate', {
+    preHandler: [fastify.requireRole(['supervisor', 'admin'])],
+    schema: {
+      tags: ['TechOps'],
+      summary: 'Convert tech ops entry to estimate',
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'string', format: 'uuid' } },
+      },
+      body: {
+        type: 'object',
+        properties: {
+          urgent: { type: 'boolean' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { urgent } = (request.body || {}) as { urgent?: boolean };
+    const user = request.user!;
+
+    // For now, just mark as converted - estimate creation would be handled separately
+    const entry = await fastify.prisma.techOpsEntry.update({
+      where: { id },
+      data: {
+        status: 'completed',
+        convertedAt: new Date(),
+        reviewedBy: user.sub,
+        reviewedAt: new Date(),
+        priority: urgent ? 'urgent' : undefined,
+      },
+    });
+    return { ...entry, estimateNumber: `EST-${id.slice(0, 8)}` };
+  });
+
+  // GET /api/tech-ops/windy-day-pending-count - Get pending windy day count
+  fastify.get('/windy-day-pending-count', {
+    preHandler: [fastify.requireAuth],
+    schema: {
+      tags: ['TechOps'],
+      summary: 'Get count of pending windy day cleanup entries',
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const count = await fastify.prisma.techOpsEntry.count({
+      where: {
+        entryType: 'windy_day_cleanup',
+        status: 'pending',
+      },
+    });
+    return { count };
   });
 };
 
