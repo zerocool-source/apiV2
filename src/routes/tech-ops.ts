@@ -198,13 +198,7 @@ const techOpsRoutes: FastifyPluginAsync = async (fastify) => {
             },
           },
         },
-        property: {
-          select: {
-            id: true,
-            name: true,
-            address: true,
-          },
-        },
+        // property relation removed - propertyId/propertyName/propertyAddress stored directly
       },
     });
 
@@ -258,13 +252,7 @@ const techOpsRoutes: FastifyPluginAsync = async (fastify) => {
             },
           },
         },
-        property: {
-          select: {
-            id: true,
-            name: true,
-            address: true,
-          },
-        },
+        // property relation removed - propertyId/propertyName/propertyAddress stored directly
       },
     });
 
@@ -375,13 +363,7 @@ const techOpsRoutes: FastifyPluginAsync = async (fastify) => {
             },
           },
         },
-        property: {
-          select: {
-            id: true,
-            name: true,
-            address: true,
-          },
-        },
+        // property relation removed - propertyId/propertyName/propertyAddress stored directly
       },
     });
 
@@ -487,13 +469,7 @@ const techOpsRoutes: FastifyPluginAsync = async (fastify) => {
             },
           },
         },
-        property: {
-          select: {
-            id: true,
-            name: true,
-            address: true,
-          },
-        },
+        // property relation removed - propertyId/propertyName/propertyAddress stored directly
       },
     });
 

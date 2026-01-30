@@ -72,7 +72,7 @@ model Property {
   propertyChannels   PropertyChannel[]
   repairRequests     RepairRequest[]
   serviceRepairs     ServiceRepair[]
-  techOpsEntries     TechOpsEntry[]
+  // techOpsEntries relation removed - propertyId in TechOpsEntry is just a string
   technicianStatuses TechnicianStatus[]
   uploads            Upload[]
 }
@@ -380,7 +380,7 @@ model TechOpsEntry {
   convertedAt           DateTime?
   createdAt             DateTime           @default(now())
   updatedAt             DateTime           @updatedAt
-  property              Property?          @relation(fields: [propertyId], references: [id])
+  // property relation removed - propertyId is just a string, not a FK
   reviewer              User?              @relation("TechOpsReviewer", fields: [reviewedBy], references: [id])
   technician            User?              @relation("TechOpsCreator", fields: [technicianId], references: [id])
 }
