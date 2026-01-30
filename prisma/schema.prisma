@@ -7,6 +7,1254 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id                String             @id @default(uuid())
+  email             String             @unique
+  passwordHash      String
+  role              Role               @default(tech)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  alerts            Alert[]
+  assignments       Assignment[]
+  chemicalOrders    ChemicalOrder[]
+  emergencyReports  EmergencyReport[]
+  estimates         Estimate[]
+  inspections       Inspection[]
+  jobs              Job[]
+  locationPings     LocationPing[]
+  messagesSent      Message[]          @relation("MessageFrom")
+  messagesReceived  Message[]          @relation("MessageTo")
+  propertyChannels  PropertyChannel[]
+  repairRequests    RepairRequest[]
+  serviceRepairs    ServiceRepair[]
+  syncBatches       SyncBatch[]
+  techOpsReviewed   TechOpsEntry[]     @relation("TechOpsReviewer")
+  techOpsCreated    TechOpsEntry[]     @relation("TechOpsCreator")
+  technicianProfile TechnicianProfile?
+  technicianStatus  TechnicianStatus?
+  timeEntries       TimeEntry[]
+  uploads           Upload[]
+}
+
+model TechnicianProfile {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  name         String
+  phone        String?
+  truckId      String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  region       Region?
+  supervisorId String?
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Property {
+  id                 String              @id @default(uuid())
+  name               String
+  address            String
+  latitude           Float?
+  longitude          Float?
+  notes              String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  region             Region?
+  assignments        Assignment[]
+  checklistResponses ChecklistResponse[]
+  checklistTemplates ChecklistTemplate[]
+  chemicalOrders     ChemicalOrder[]
+  chemicalReadings   ChemicalReading[]
+  emergencyReports   EmergencyReport[]
+  inspections        Inspection[]
+  jobs               Job[]
+  messages           Message[]
+  propertyChannels   PropertyChannel[]
+  repairRequests     RepairRequest[]
+  serviceRepairs     ServiceRepair[]
+  techOpsEntries     TechOpsEntry[]
+  technicianStatuses TechnicianStatus[]
+  uploads            Upload[]
+}
+
+model Assignment {
+  id                 String              @id @default(uuid())
+  propertyId         String
+  technicianId       String
+  status             AssignmentStatus    @default(pending)
+  scheduledDate      DateTime
+  completedAt        DateTime?
+  notes              String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  priority           AssignmentPriority  @default(med)
+  canceledAt         DateTime?
+  canceledReason     String?
+  property           Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  technician         User                @relation(fields: [technicianId], references: [id], onDelete: Cascade)
+  checklistResponses ChecklistResponse[]
+  chemicalReadings   ChemicalReading[]
+  emergencyReports   EmergencyReport[]
+  routeStops         RouteStop[]
+  technicianStatuses TechnicianStatus[]
+}
+
+model RouteStop {
+  id           String     @id @default(uuid())
+  assignmentId String
+  order        Int
+  eta          DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+}
+
+model PropertyChannel {
+  id         String    @id @default(uuid())
+  propertyId String
+  channelId  String
+  createdBy  String
+  createdAt  DateTime  @default(now())
+  messages   Message[]
+  creator    User      @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  property   Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+}
+
+model Message {
+  id         String           @id @default(uuid())
+  channelId  String?
+  fromUserId String
+  toUserId   String?
+  propertyId String?
+  text       String
+  createdAt  DateTime         @default(now())
+  channel    PropertyChannel? @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  fromUser   User             @relation("MessageFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  property   Property?        @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  toUser     User?            @relation("MessageTo", fields: [toUserId], references: [id], onDelete: Cascade)
+}
+
+model EmergencyReport {
+  id           String            @id @default(uuid())
+  propertyId   String
+  assignmentId String?
+  createdBy    String
+  severity     EmergencySeverity
+  category     String
+  description  String
+  actionsTaken String?
+  photos       String[]
+  createdAt    DateTime          @default(now())
+  assignment   Assignment?       @relation(fields: [assignmentId], references: [id])
+  creator      User              @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  property     Property          @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+}
+
+model LocationPing {
+  id        String   @id @default(uuid())
+  userId    String
+  latitude  Float
+  longitude Float
+  timestamp DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TechnicianStatus {
+  id                  String      @id @default(uuid())
+  userId              String      @unique
+  clockedIn           Boolean     @default(false)
+  currentPropertyId   String?
+  currentAssignmentId String?
+  updatedAt           DateTime    @updatedAt
+  currentAssignment   Assignment? @relation(fields: [currentAssignmentId], references: [id])
+  currentProperty     Property?   @relation(fields: [currentPropertyId], references: [id])
+  user                User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ChecklistTemplate {
+  id         String    @id @default(uuid())
+  propertyId String?
+  name       String
+  items      Json
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  property   Property? @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+}
+
+model ChecklistResponse {
+  id           String     @id @default(uuid())
+  assignmentId String
+  propertyId   String
+  responses    Json
+  createdAt    DateTime   @default(now())
+  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  property     Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+}
+
+model ChemicalReading {
+  id           String     @id @default(uuid())
+  assignmentId String
+  propertyId   String
+  ph           Float
+  chlorine     Float
+  alkalinity   Float
+  cya          Float?
+  orp          Float?
+  timestamp    DateTime   @default(now())
+  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  property     Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+}
+
+model TruckInventoryItem {
+  id        String   @id @default(uuid())
+  truckId   String
+  sku       String?
+  name      String
+  qty       Int      @default(0)
+  unit      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Inspection {
+  id              String   @id @default(uuid())
+  propertyId      String
+  inspectorUserId String
+  type            String
+  results         Json
+  createdAt       DateTime @default(now())
+  inspector       User     @relation(fields: [inspectorUserId], references: [id], onDelete: Cascade)
+  property        Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+}
+
+model Alert {
+  id        String    @id @default(uuid())
+  createdBy String
+  title     String
+  message   String
+  severity  String
+  audience  String[]
+  createdAt DateTime  @default(now())
+  expiresAt DateTime?
+  creator   User      @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+}
+
+model RepairRequest {
+  id          String   @id @default(uuid())
+  propertyId  String
+  createdBy   String
+  description String
+  priority    String
+  createdAt   DateTime @default(now())
+  creator     User     @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+}
+
+model ServiceRepair {
+  id         String   @id @default(uuid())
+  propertyId String
+  createdBy  String
+  details    Json
+  createdAt  DateTime @default(now())
+  creator    User     @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+}
+
+model ChemicalOrder {
+  id         String    @id @default(uuid())
+  propertyId String?
+  createdBy  String
+  items      Json
+  createdAt  DateTime  @default(now())
+  creator    User      @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  property   Property? @relation(fields: [propertyId], references: [id])
+}
+
+model Job {
+  id               String      @id @default(uuid())
+  type             JobType
+  propertyId       String
+  assignedToUserId String
+  status           JobStatus   @default(pending)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  estimates        Estimate[]
+  assignedTo       User        @relation(fields: [assignedToUserId], references: [id], onDelete: Cascade)
+  property         Property    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  timeEntries      TimeEntry[]
+}
+
+model Estimate {
+  id        String   @id @default(uuid())
+  jobId     String
+  createdBy String
+  lines     Json
+  total     Float
+  createdAt DateTime @default(now())
+  creator   User     @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+}
+
+model Product {
+  id       String  @id @default(uuid())
+  sku      String  @unique
+  name     String
+  category String?
+  price    Float
+}
+
+model TimeEntry {
+  id        String   @id @default(uuid())
+  jobId     String
+  userId    String
+  minutes   Int
+  notes     String?
+  createdAt DateTime @default(now())
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Upload {
+  id         String    @id @default(uuid())
+  createdBy  String
+  propertyId String?
+  url        String
+  mime       String
+  createdAt  DateTime  @default(now())
+  creator    User      @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  property   Property? @relation(fields: [propertyId], references: [id])
+}
+
+model SyncBatch {
+  id        String   @id @default(uuid())
+  userId    String
+  payload   Json
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Roster {
+  id        String   @id @default(uuid())
+  date      DateTime
+  userId    String
+  shift     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TechOpsEntry {
+  id                    String             @id @default(uuid())
+  serviceRepairNumber   String?
+  entryType             TechOpsEntryType
+  technicianName        String?
+  technicianId          String?
+  positionType          String?
+  propertyId            String?
+  propertyName          String?
+  propertyAddress       String?
+  issueTitle            String?
+  description           String?
+  notes                 String?
+  priority              TechOpsPriority    @default(normal)
+  status                TechOpsStatus      @default(pending)
+  isRead                Boolean            @default(false)
+  chemicals             String?
+  quantity              String?
+  issueType             String?
+  photos                String[]
+  reviewedBy            String?
+  reviewedAt            DateTime?
+  resolvedBy            String?
+  resolvedAt            DateTime?
+  resolutionNotes       String?
+  vendorId              String?
+  vendorName            String?
+  orderStatus           TechOpsOrderStatus @default(pending)
+  invoiceSentAt         DateTime?
+  invoiceSentToVendorId String?
+  invoiceTemplateId     String?
+  partsCost             Int?               @default(0)
+  commissionPercent     Int?
+  commissionAmount      Int?
+  convertedToEstimateId String?
+  convertedAt           DateTime?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  property              Property?          @relation(fields: [propertyId], references: [id])
+  reviewer              User?              @relation("TechOpsReviewer", fields: [reviewedBy], references: [id])
+  technician            User?              @relation("TechOpsCreator", fields: [technicianId], references: [id])
+}
+
+model alerts {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  external_id String?
+  pool_name   String
+  type        String
+  severity    String
+  message     String
+  status      String    @default("Active")
+  timestamp   DateTime? @default(now()) @db.Timestamp(6)
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model archived_alerts {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  alert_id    String    @unique(map: "archived_alerts_alert_id_unique")
+  alert_type  String
+  archived_at DateTime? @default(now()) @db.Timestamp(6)
+  archived_by String?
+}
+
+model channel_members {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  channel_id String    @db.VarChar
+  user_id    String
+  user_name  String
+  role       String?   @default("member")
+  joined_at  DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model channel_messages {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  channel_id        String    @db.VarChar
+  parent_message_id String?   @db.VarChar
+  author_id         String
+  author_name       String
+  content           String
+  message_type      String?   @default("text")
+  attachments       Json?     @default("[]") @db.Json
+  mentions          Json?     @default("[]") @db.Json
+  is_edited         Boolean?  @default(false)
+  is_pinned         Boolean?  @default(false)
+  created_at        DateTime? @default(now()) @db.Timestamp(6)
+  updated_at        DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model channel_reactions {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  message_id String    @db.VarChar
+  user_id    String
+  emoji      String
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model channel_reads {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  channel_id           String    @db.VarChar
+  user_id              String
+  last_read_at         DateTime? @default(now()) @db.Timestamp(6)
+  last_read_message_id String?   @db.VarChar
+}
+
+model chat_messages {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  role      String
+  content   String
+  model     String?
+  timestamp DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model completed_alerts {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  alert_id     String    @unique(map: "completed_alerts_alert_id_unique")
+  category     String
+  completed_at DateTime? @default(now()) @db.Timestamp(6)
+  reviewed_by  String?
+}
+
+model customer_addresses {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  customer_id    String    @db.VarChar
+  external_id    String?
+  address_type   String?   @default("primary")
+  address_line_1 String?
+  address_line_2 String?
+  city           String?
+  state          String?
+  zip            String?
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model customer_contacts {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  customer_id  String    @db.VarChar
+  name         String
+  email        String?
+  phone        String?
+  contact_type String?   @default("primary")
+  created_at   DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model customer_tag_assignments {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  customer_id String    @db.VarChar
+  tag_id      String    @db.VarChar
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model customer_tags {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  name           String
+  color          String?   @default("#6B7280")
+  is_prebuilt    Boolean?  @default(false)
+  is_warning_tag Boolean?  @default(false)
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model customers {
+  id                      String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  external_id             String?
+  name                    String
+  email                   String?
+  phone                   String?
+  address                 String?
+  city                    String?
+  state                   String?
+  zip                     String?
+  status                  String?   @default("active")
+  pool_count              Int?      @default(0)
+  tags                    String?
+  notes                   String?
+  chemicals_budget        Int?
+  chemicals_budget_period String?   @default("monthly")
+  repairs_budget          Int?
+  repairs_budget_period   String?   @default("monthly")
+  created_at              DateTime? @default(now()) @db.Timestamp(6)
+  updated_at              DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model emergencies {
+  id                          String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  property_id                 String?   @db.VarChar
+  property_name               String?
+  property_address            String?
+  submitted_by_id             String?   @db.VarChar
+  submitted_by_name           String?
+  submitter_role              String
+  description                 String
+  total_amount                Int?      @default(0)
+  photos                      String[]
+  original_service_date       DateTime? @db.Timestamp(6)
+  converted_to_estimate_id    String?
+  converted_to_invoice_id     String?
+  converted_at                DateTime? @db.Timestamp(6)
+  original_marked_complete_at DateTime? @db.Timestamp(6)
+  status                      String    @default("pending_review")
+  priority                    String?   @default("normal")
+  resolved_at                 DateTime? @db.Timestamp(6)
+  resolved_by_id              String?   @db.VarChar
+  resolved_by_name            String?
+  resolution_notes            String?
+  created_at                  DateTime? @default(now()) @db.Timestamp(6)
+  updated_at                  DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model equipment {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  customer_id     String    @db.VarChar
+  pool_id         String?   @db.VarChar
+  property_id     String?   @db.VarChar
+  category        String
+  equipment_type  String
+  brand           String?
+  model           String?
+  serial_number   String?
+  quantity        Int?      @default(1)
+  photos          String[]
+  install_date    DateTime? @db.Timestamp(6)
+  warranty_expiry DateTime? @db.Timestamp(6)
+  notes           String?
+  created_at      DateTime? @default(now()) @db.Timestamp(6)
+  updated_at      DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model equipment_pm_schedules {
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  equipment_id           String
+  equipment_name         String
+  equipment_type         String
+  property_id            String
+  property_name          String
+  body_of_water_id       String?
+  water_type             String
+  pm_service_type_id     String    @db.VarChar
+  interval_setting_id    String?   @db.VarChar
+  custom_interval_months Int?
+  custom_interval_reason String?
+  install_date           String?
+  last_service_date      String?
+  next_due_date          String
+  status                 String    @default("current")
+  due_priority           Int?      @default(0)
+  notes                  String?
+  is_active              Boolean?  @default(true)
+  created_at             DateTime? @default(now()) @db.Timestamp(6)
+  updated_at             DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model estimate_history_log {
+  id                      String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  estimate_id             String
+  estimate_number         String?
+  property_id             String?
+  property_name           String?
+  customer_id             String?
+  customer_name           String?
+  estimate_value          Int?
+  action_type             String
+  action_description      String?
+  performed_by_user_id    String?
+  performed_by_user_name  String?
+  performed_at            DateTime? @default(now()) @db.Timestamp(6)
+  approval_method         String?
+  approver_name           String?
+  approver_title          String?
+  approver_contact_method String?
+  reason                  String?
+  notes                   String?
+  previous_status         String?
+  new_status              String?
+  ip_address              String?
+  user_agent              String?
+  created_at              DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model estimates {
+  id                             String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  property_id                    String
+  property_name                  String
+  customer_name                  String?
+  customer_email                 String?
+  address                        String?
+  estimate_number                String?
+  estimate_date                  DateTime? @default(now()) @db.Timestamp(6)
+  expiration_date                DateTime? @db.Timestamp(6)
+  accepted_by                    String?
+  accepted_date                  DateTime? @db.Timestamp(6)
+  location                       String?
+  tags                           String[]
+  source_type                    String?   @default("office_staff")
+  source_repair_job_id           String?
+  source_emergency_id            String?
+  service_repair_count           Int?
+  converted_by_user_id           String?
+  converted_by_user_name         String?
+  converted_at                   DateTime? @db.Timestamp(6)
+  title                          String
+  description                    String?
+  items                          Json?     @default("[]") @db.Json
+  photos                         String[]
+  attachments                    Json?     @default("[]") @db.Json
+  subtotal                       Int?      @default(0)
+  discount_type                  String?   @default("percent")
+  discount_value                 Float?    @default(0) @db.Real
+  discount_amount                Int?      @default(0)
+  taxable_subtotal               Int?      @default(0)
+  sales_tax_rate                 Float?    @default(0) @db.Real
+  sales_tax_amount               Int?      @default(0)
+  deposit_type                   String?   @default("percent")
+  deposit_value                  Float?    @default(0) @db.Real
+  deposit_amount                 Int?      @default(0)
+  total_amount                   Int?      @default(0)
+  parts_total                    Int?      @default(0)
+  labor_total                    Int?      @default(0)
+  status                         String    @default("draft")
+  created_by_tech_id             String?
+  created_by_tech_name           String?
+  repair_tech_id                 String?
+  repair_tech_name               String?
+  service_tech_id                String?
+  service_tech_name              String?
+  field_supervisor_id            String?
+  field_supervisor_name          String?
+  office_member_id               String?
+  office_member_name             String?
+  repair_foreman_id              String?
+  repair_foreman_name            String?
+  approved_by_manager_id         String?
+  approved_by_manager_name       String?
+  created_at                     DateTime? @default(now()) @db.Timestamp(6)
+  reported_date                  DateTime? @db.Timestamp(6)
+  sent_for_approval_at           DateTime? @db.Timestamp(6)
+  approved_at                    DateTime? @db.Timestamp(6)
+  rejected_at                    DateTime? @db.Timestamp(6)
+  scheduled_date                 DateTime? @db.Timestamp(6)
+  completed_at                   DateTime? @db.Timestamp(6)
+  invoiced_at                    DateTime? @db.Timestamp(6)
+  tech_notes                     String?
+  manager_notes                  String?
+  rejection_reason               String?
+  customer_note                  String?
+  memo_on_statement              String?
+  approval_token                 String?
+  approval_token_expires_at      DateTime? @db.Timestamp(6)
+  approval_sent_to               String?
+  approval_sent_at               DateTime? @db.Timestamp(6)
+  customer_approver_name         String?
+  customer_approver_title        String?
+  verbal_approval_recorded_by    String?
+  verbal_approval_method         String?
+  verbal_approval_method_details String?
+  job_id                         String?
+  invoice_id                     String?
+  assigned_repair_job_id         String?
+  scheduled_by_user_id           String?
+  scheduled_by_user_name         String?
+  scheduled_at                   DateTime? @db.Timestamp(6)
+  deadline_at                    DateTime? @db.Timestamp(6)
+  deadline_unit                  String?   @default("hours")
+  deadline_value                 Int?
+  work_type                      String?   @default("repairs")
+  wo_required                    Boolean?  @default(false)
+  wo_received                    Boolean?  @default(false)
+  wo_number                      String?
+  is_deleted                     Boolean?  @default(false)
+  deleted_at                     DateTime? @db.Timestamp(6)
+  deleted_by_user_id             String?
+  deleted_by_user_name           String?
+  deleted_reason                 String?
+  archived_at                    DateTime? @db.Timestamp(6)
+  archived_by_user_id            String?
+  archived_by_user_name          String?
+  archived_reason                String?
+  source_service_repair_ids      String[]
+}
+
+model field_entries {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  route_stop_id   String?
+  property_id     String?
+  technician_id   String?
+  technician_name String?
+  entry_type      String
+  payload         String?
+  submitted_at    DateTime? @default(now()) @db.Timestamp(6)
+  sync_status     String?   @default("synced")
+  created_at      DateTime? @default(now()) @db.Timestamp(6)
+  updated_at      DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model fleet_maintenance_records {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  truck_id     String    @db.VarChar
+  truck_number Int
+  service_type String
+  service_date String?
+  vendor       String?
+  mileage      Int?
+  cost         Float?    @db.Real
+  notes        String?
+  created_at   DateTime? @default(now()) @db.Timestamp(6)
+  updated_at   DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model fleet_trucks {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  truck_number     Int       @unique(map: "fleet_trucks_truck_number_unique")
+  current_mileage  Int?
+  registration_due String?
+  smog_due         String?
+  smog_result      String?
+  notes            String?
+  status           String?   @default("Active")
+  is_active        Boolean?  @default(true)
+  created_at       DateTime? @default(now()) @db.Timestamp(6)
+  updated_at       DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model message_read_receipts {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  message_id String    @db.VarChar
+  user_id    String
+  read_at    DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model pay_periods {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  start_date DateTime  @db.Timestamp(6)
+  end_date   DateTime  @db.Timestamp(6)
+  status     String    @default("open")
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model payroll_entries {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  pay_period_id     String    @db.VarChar
+  technician_id     String
+  technician_name   String
+  job_id            String
+  job_title         String
+  customer_name     String?
+  amount            Int
+  commission_rate   Int?      @default(10)
+  commission_amount Int
+  notes             String?
+  added_by          String?
+  created_at        DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model pm_interval_settings {
+  id                          String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  pm_service_type_id          String    @db.VarChar
+  water_type                  String
+  recommended_interval_months Int
+  minimum_interval_months     Int
+  maximum_interval_months     Int
+  warning_threshold_days      Int?      @default(30)
+  industry_standard           String?
+  notes                       String?
+  is_active                   Boolean?  @default(true)
+  created_at                  DateTime? @default(now()) @db.Timestamp(6)
+  updated_at                  DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model pm_service_records {
+  id                        String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  equipment_pm_schedule_id  String    @db.VarChar
+  equipment_id              String
+  equipment_name            String
+  property_id               String
+  property_name             String
+  body_of_water_id          String?
+  pm_service_type_id        String    @db.VarChar
+  service_date              String
+  completed_by_name         String?
+  duration_minutes          Int?
+  service_reason            String
+  work_notes                String?
+  issues_found              String?
+  condition_rating          String?
+  recommended_follow_up     String?
+  labor_cost                Float?    @db.Real
+  parts_cost                Float?    @db.Real
+  total_cost                Float?    @db.Real
+  days_since_last_service   Int?
+  was_early_service         Boolean?  @default(false)
+  early_service_approved_by String?
+  early_service_reason      String?
+  next_service_date         String?
+  created_at                DateTime? @default(now()) @db.Timestamp(6)
+  updated_at                DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model pm_service_types {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  name        String
+  description String?
+  category    String
+  is_active   Boolean?  @default(true)
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+  updated_at  DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model pool_equipment {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  pool_id         String    @db.VarChar
+  equipment_type  String
+  equipment_value String?
+  created_at      DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model pools {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  customer_id   String    @db.VarChar
+  external_id   String?
+  name          String
+  pool_type     String?
+  service_level String?
+  water_type    String?
+  gallons       Int?
+  address       String?
+  city          String?
+  state         String?
+  zip           String?
+  latitude      Float?    @db.Real
+  longitude     Float?    @db.Real
+  notes         String?
+  wo_required   Boolean?  @default(false)
+  wo_notes      String?
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+  updated_at    DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model properties {
+  id                      String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  external_id             String?
+  customer_id             String?
+  customer_name           String?
+  name                    String
+  address                 String?
+  city                    String?
+  state                   String?
+  zip                     String?
+  latitude                Float?    @db.Real
+  longitude               Float?    @db.Real
+  pool_count              Int?      @default(0)
+  service_level           String?
+  status                  String?   @default("active")
+  notes                   String?
+  gate_code               String?
+  access_instructions     String?
+  billing_address         String?
+  billing_city            String?
+  billing_state           String?
+  billing_zip             String?
+  primary_contact_name    String?
+  primary_contact_phone   String?
+  primary_contact_email   String?
+  secondary_contact_name  String?
+  secondary_contact_phone String?
+  secondary_contact_email String?
+  zone                    String?
+  tags                    String[]
+  monthly_rate            Int?
+  account_balance         Int?      @default(0)
+  last_service_date       DateTime? @db.Timestamp(6)
+  next_service_date       DateTime? @db.Timestamp(6)
+  property_type           String?
+  created_at              DateTime? @default(now()) @db.Timestamp(6)
+  updated_at              DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model property_access_notes {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  property_id String    @db.VarChar
+  note_type   String
+  title       String
+  content     String?
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+  updated_at  DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model property_billing_contacts {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  property_id  String    @db.VarChar
+  contact_type String
+  email        String
+  name         String?
+  created_at   DateTime? @default(now()) @db.Timestamp(6)
+  updated_at   DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model property_channels {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  property_id   String    @unique(map: "property_channels_property_id_unique")
+  property_name String
+  customer_name String?
+  address       String?
+  description   String?
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+  updated_at    DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model property_contacts {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  property_id String    @db.VarChar
+  name        String
+  role        String?
+  phone       String?
+  email       String?
+  is_primary  Boolean?  @default(false)
+  notes       String?
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+  updated_at  DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model quickbooks_tokens {
+  id                       String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  realm_id                 String
+  access_token             String
+  refresh_token            String
+  access_token_expires_at  DateTime  @db.Timestamp(6)
+  refresh_token_expires_at DateTime  @db.Timestamp(6)
+  created_at               DateTime? @default(now()) @db.Timestamp(6)
+  updated_at               DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model route_assignments {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  schedule_id     String    @db.VarChar
+  day_of_week     Int
+  technician_id   String
+  technician_name String?
+  route_name      String?
+  created_at      DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model route_moves {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  stop_id            String
+  original_route_id  String
+  temporary_route_id String
+  move_date          DateTime  @db.Timestamp(6)
+  is_permanent       Boolean?  @default(false)
+  created_at         DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model route_schedules {
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  property_id            String    @db.VarChar
+  pool_id                String?   @db.VarChar
+  is_active              Boolean?  @default(false)
+  frequency              String?   @default("weekly")
+  frequency_interval     Int?      @default(1)
+  visit_days             String[]
+  route_notes            String?
+  end_date               DateTime? @db.Timestamp(6)
+  last_generated_through DateTime? @db.Timestamp(6)
+  created_at             DateTime? @default(now()) @db.Timestamp(6)
+  updated_at             DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model route_stops {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  external_id     String?
+  route_id        String
+  property_id     String
+  property_name   String
+  customer_id     String?
+  customer_name   String?
+  pool_id         String?
+  address         String?
+  city            String?
+  state           String?
+  zip             String?
+  pool_name       String?
+  job_type        String?   @default("route_stop")
+  status          String?   @default("not_started")
+  sort_order      Int?      @default(0)
+  estimated_time  Int?      @default(30)
+  notes           String?
+  frequency       String?   @default("weekly")
+  frequency_weeks Int?      @default(1)
+  created_at      DateTime? @default(now()) @db.Timestamp(6)
+  updated_at      DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model routes {
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  external_id            String?
+  name                   String
+  date                   DateTime? @db.Timestamp(6)
+  day_of_week            Int
+  color                  String    @default("#0891b2")
+  technician_id          String?
+  technician_name        String?
+  is_locked              Boolean?  @default(false)
+  estimated_drive_time   Int?      @default(0)
+  estimated_miles        Float?    @default(0) @db.Real
+  estimated_on_site_time Int?      @default(0)
+  start_location         String?
+  end_location           String?
+  sort_order             Int?      @default(0)
+  created_at             DateTime? @default(now()) @db.Timestamp(6)
+  updated_at             DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model service_occurrences {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  property_id        String    @db.VarChar
+  date               DateTime  @db.Timestamp(6)
+  status             String?   @default("unscheduled")
+  route_id           String?   @db.VarChar
+  technician_id      String?   @db.VarChar
+  source_schedule_id String    @db.VarChar
+  is_auto_generated  Boolean?  @default(true)
+  created_at         DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model service_repair_jobs {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  external_id     String?
+  job_number      String
+  property_id     String
+  property_name   String
+  customer_id     String?
+  customer_name   String?
+  pool_id         String?
+  pool_name       String?
+  address         String?
+  technician_id   String?
+  technician_name String?
+  job_date        DateTime? @default(now()) @db.Timestamp(6)
+  description     String?
+  notes           String?
+  photos          String[]
+  labor_amount    Int?      @default(0)
+  parts_amount    Int?      @default(0)
+  total_amount    Int?      @default(0)
+  items           Json?     @default("[]") @db.Json
+  status          String    @default("pending")
+  estimate_id     String?
+  invoice_id      String?
+  created_at      DateTime? @default(now()) @db.Timestamp(6)
+  updated_at      DateTime? @default(now()) @db.Timestamp(6)
+  batched_at      DateTime? @db.Timestamp(6)
+}
+
+model service_tasks {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  pool_id           String    @db.VarChar
+  name              String
+  category          String
+  description       String?
+  sort_order        Int?      @default(0)
+  is_completed      Boolean?  @default(false)
+  icons             String?
+  hidden_conditions String?
+  created_at        DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model sessions {
+  sid    String   @id @db.VarChar
+  sess   Json     @db.Json
+  expire DateTime @db.Timestamp(6)
+
+  @@index([expire])
+}
+
+model settings {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  pool_brain_api_key    String?
+  pool_brain_company_id String?
+  default_ai_model      String?   @default("goss-20b")
+  updated_at            DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model tech_ops {
+  id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar(36)
+  entry_type       tech_ops_entry_type
+  description      String
+  priority         tech_ops_priority   @default(normal)
+  status           tech_ops_status     @default(pending)
+  property_id      String              @db.VarChar(36)
+  property_name    String
+  body_of_water    String
+  technician_id    String              @db.VarChar(36)
+  technician_name  String
+  photo_urls       String?
+  resolved_at      DateTime?           @db.Timestamp(6)
+  resolved_by_id   String?             @db.VarChar(36)
+  resolution_notes String?
+  created_at       DateTime            @default(now()) @db.Timestamp(6)
+  updated_at       DateTime            @default(now()) @db.Timestamp(6)
+}
+
+model tech_ops_entries {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  entry_type       String
+  technician_name  String
+  technician_id    String?   @db.VarChar
+  property_id      String?   @db.VarChar
+  property_name    String?
+  property_address String?
+  description      String?
+  notes            String?
+  priority         String?   @default("normal")
+  status           String?   @default("pending")
+  is_read          Boolean?  @default(false)
+  chemicals        String?
+  quantity         String?
+  issue_type       String?
+  photos           String[]
+  reviewed_by      String?
+  reviewed_at      DateTime? @db.Timestamp(6)
+  created_at       DateTime? @default(now()) @db.Timestamp(6)
+  updated_at       DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model technicians {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  external_id        String?
+  first_name         String
+  last_name          String
+  phone              String?
+  email              String?
+  photo_url          String?
+  role               String?   @default("service")
+  supervisor_id      String?   @db.VarChar
+  active             Boolean?  @default(true)
+  created_at         DateTime? @default(now()) @db.Timestamp(6)
+  updated_at         DateTime? @default(now()) @db.Timestamp(6)
+  region             String?
+  truck_number       String?
+  commission_percent Int?      @default(0)
+}
+
+model thread_messages {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  thread_id       String    @db.VarChar
+  author_id       String
+  author_name     String
+  type            String    @default("update")
+  text            String?
+  photo_urls      Json?     @default("[]") @db.Json
+  tagged_user_ids Json?     @default("[]") @db.Json
+  tagged_roles    Json?     @default("[]") @db.Json
+  visibility      String?   @default("all")
+  pinned          Boolean?  @default(false)
+  created_at      DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model threads {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  account_id   String    @unique(map: "threads_account_id_unique")
+  account_name String
+  created_at   DateTime? @default(now()) @db.Timestamp(6)
+  updated_at   DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model truck_inventory {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  truck_id       String    @db.VarChar
+  truck_number   Int
+  item_name      String
+  category       String
+  quantity       Int       @default(0)
+  unit           String?   @default("each")
+  min_quantity   Int?      @default(0)
+  max_quantity   Int?
+  last_restocked DateTime? @db.Timestamp(6)
+  notes          String?
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+  updated_at     DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model unscheduled_stops {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  property_id    String
+  property_name  String
+  customer_name  String?
+  address        String?
+  pool_name      String?
+  job_type       String?   @default("route_stop")
+  notes          String?
+  estimated_time Int?      @default(30)
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model users {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  email      String    @unique @db.VarChar
+  password   String    @db.VarChar
+  first_name String?   @db.VarChar
+  last_name  String?   @db.VarChar
+  role       String?   @default("admin") @db.VarChar
+  is_active  Boolean?  @default(true)
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+  updated_at DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model workflows {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  name       String
+  trigger    String
+  action     String
+  status     String    @default("active")
+  executions Int?      @default(0)
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+}
+
 enum Role {
   tech
   supervisor
@@ -54,364 +1302,6 @@ enum Region {
   south
 }
 
-model User {
-  id            String   @id @default(uuid())
-  email         String   @unique
-  passwordHash  String
-  role          Role     @default(tech)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  technicianProfile  TechnicianProfile?
-  assignments        Assignment[]
-  propertyChannels   PropertyChannel[]
-  messagesSent       Message[]          @relation("MessageFrom")
-  messagesReceived   Message[]          @relation("MessageTo")
-  emergencyReports   EmergencyReport[]
-  locationPings      LocationPing[]
-  technicianStatus   TechnicianStatus?
-  inspections        Inspection[]
-  alerts             Alert[]
-  repairRequests     RepairRequest[]
-  serviceRepairs     ServiceRepair[]
-  chemicalOrders     ChemicalOrder[]
-  jobs               Job[]
-  estimates          Estimate[]
-  timeEntries        TimeEntry[]
-  uploads            Upload[]
-  syncBatches        SyncBatch[]
-  techOpsCreated     TechOpsEntry[]     @relation("TechOpsCreator")
-  techOpsReviewed    TechOpsEntry[]     @relation("TechOpsReviewer")
-}
-
-model TechnicianProfile {
-  id           String   @id @default(uuid())
-  userId       String   @unique
-  name         String
-  phone        String?
-  truckId      String?
-  supervisorId String?
-  region       Region?
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model Property {
-  id        String   @id @default(uuid())
-  name      String
-  address   String
-  latitude  Float?
-  longitude Float?
-  region    Region?
-  notes     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  assignments        Assignment[]
-  propertyChannels   PropertyChannel[]
-  messages           Message[]
-  emergencyReports   EmergencyReport[]
-  checklistTemplates ChecklistTemplate[]
-  checklistResponses ChecklistResponse[]
-  chemicalReadings   ChemicalReading[]
-  inspections        Inspection[]
-  repairRequests     RepairRequest[]
-  serviceRepairs     ServiceRepair[]
-  chemicalOrders     ChemicalOrder[]
-  jobs               Job[]
-  uploads            Upload[]
-  technicianStatuses TechnicianStatus[]
-  techOpsEntries     TechOpsEntry[]
-}
-
-model Assignment {
-  id             String             @id @default(uuid())
-  propertyId     String
-  technicianId   String
-  status         AssignmentStatus   @default(pending)
-  priority       AssignmentPriority @default(med)
-  scheduledDate  DateTime
-  completedAt    DateTime?
-  canceledAt     DateTime?
-  canceledReason String?
-  notes          String?
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-
-  property           Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  technician         User                @relation(fields: [technicianId], references: [id], onDelete: Cascade)
-  routeStops         RouteStop[]
-  checklistResponses ChecklistResponse[]
-  chemicalReadings   ChemicalReading[]
-  emergencyReports   EmergencyReport[]
-  technicianStatuses TechnicianStatus[]
-}
-
-model RouteStop {
-  id           String    @id @default(uuid())
-  assignmentId String
-  order        Int
-  eta          DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-
-  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
-}
-
-model PropertyChannel {
-  id         String   @id @default(uuid())
-  propertyId String
-  channelId  String
-  createdBy  String
-  createdAt  DateTime @default(now())
-
-  property Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  creator  User      @relation(fields: [createdBy], references: [id], onDelete: Cascade)
-  messages Message[]
-}
-
-model Message {
-  id         String   @id @default(uuid())
-  channelId  String?
-  fromUserId String
-  toUserId   String?
-  propertyId String?
-  text       String
-  createdAt  DateTime @default(now())
-
-  channel  PropertyChannel? @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  fromUser User             @relation("MessageFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
-  toUser   User?            @relation("MessageTo", fields: [toUserId], references: [id], onDelete: Cascade)
-  property Property?        @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-}
-
-model EmergencyReport {
-  id           String            @id @default(uuid())
-  propertyId   String
-  assignmentId String?
-  createdBy    String
-  severity     EmergencySeverity
-  category     String
-  description  String
-  actionsTaken String?
-  photos       String[]
-  createdAt    DateTime          @default(now())
-
-  property   Property    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  assignment Assignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
-  creator    User        @relation(fields: [createdBy], references: [id], onDelete: Cascade)
-}
-
-model LocationPing {
-  id        String   @id @default(uuid())
-  userId    String
-  latitude  Float
-  longitude Float
-  timestamp DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model TechnicianStatus {
-  id                  String   @id @default(uuid())
-  userId              String   @unique
-  clockedIn           Boolean  @default(false)
-  currentPropertyId   String?
-  currentAssignmentId String?
-  updatedAt           DateTime @updatedAt
-
-  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  currentProperty   Property?   @relation(fields: [currentPropertyId], references: [id], onDelete: SetNull)
-  currentAssignment Assignment? @relation(fields: [currentAssignmentId], references: [id], onDelete: SetNull)
-}
-
-model ChecklistTemplate {
-  id         String   @id @default(uuid())
-  propertyId String?
-  name       String
-  items      Json
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  property Property? @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-}
-
-model ChecklistResponse {
-  id           String   @id @default(uuid())
-  assignmentId String
-  propertyId   String
-  responses    Json
-  createdAt    DateTime @default(now())
-
-  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
-  property   Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-}
-
-model ChemicalReading {
-  id           String   @id @default(uuid())
-  assignmentId String
-  propertyId   String
-  ph           Float
-  chlorine     Float
-  alkalinity   Float
-  cya          Float?
-  orp          Float?
-  timestamp    DateTime @default(now())
-
-  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
-  property   Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-}
-
-model TruckInventoryItem {
-  id        String   @id @default(uuid())
-  truckId   String
-  sku       String?
-  name      String
-  qty       Int      @default(0)
-  unit      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Inspection {
-  id              String   @id @default(uuid())
-  propertyId      String
-  inspectorUserId String
-  type            String
-  results         Json
-  createdAt       DateTime @default(now())
-
-  property  Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  inspector User     @relation(fields: [inspectorUserId], references: [id], onDelete: Cascade)
-}
-
-model Alert {
-  id        String    @id @default(uuid())
-  createdBy String
-  title     String
-  message   String
-  severity  String
-  audience  String[]
-  createdAt DateTime  @default(now())
-  expiresAt DateTime?
-
-  creator User @relation(fields: [createdBy], references: [id], onDelete: Cascade)
-}
-
-model RepairRequest {
-  id          String   @id @default(uuid())
-  propertyId  String
-  createdBy   String
-  description String
-  priority    String
-  createdAt   DateTime @default(now())
-
-  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  creator  User     @relation(fields: [createdBy], references: [id], onDelete: Cascade)
-}
-
-model ServiceRepair {
-  id         String   @id @default(uuid())
-  propertyId String
-  createdBy  String
-  details    Json
-  createdAt  DateTime @default(now())
-
-  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  creator  User     @relation(fields: [createdBy], references: [id], onDelete: Cascade)
-}
-
-model ChemicalOrder {
-  id         String   @id @default(uuid())
-  propertyId String?
-  createdBy  String
-  items      Json
-  createdAt  DateTime @default(now())
-
-  property Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
-  creator  User      @relation(fields: [createdBy], references: [id], onDelete: Cascade)
-}
-
-model Job {
-  id               String    @id @default(uuid())
-  type             JobType
-  propertyId       String
-  assignedToUserId String
-  status           JobStatus @default(pending)
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-
-  property   Property    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  assignedTo User        @relation(fields: [assignedToUserId], references: [id], onDelete: Cascade)
-  estimates  Estimate[]
-  timeEntries TimeEntry[]
-}
-
-model Estimate {
-  id        String   @id @default(uuid())
-  jobId     String
-  createdBy String
-  lines     Json
-  total     Float
-  createdAt DateTime @default(now())
-
-  job     Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  creator User @relation(fields: [createdBy], references: [id], onDelete: Cascade)
-}
-
-model Product {
-  id       String  @id @default(uuid())
-  sku      String  @unique
-  name     String
-  category String?
-  price    Float
-}
-
-model TimeEntry {
-  id        String   @id @default(uuid())
-  jobId     String
-  userId    String
-  minutes   Int
-  notes     String?
-  createdAt DateTime @default(now())
-
-  job  Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model Upload {
-  id         String   @id @default(uuid())
-  createdBy  String
-  propertyId String?
-  url        String
-  mime       String
-  createdAt  DateTime @default(now())
-
-  creator  User      @relation(fields: [createdBy], references: [id], onDelete: Cascade)
-  property Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
-}
-
-model SyncBatch {
-  id        String   @id @default(uuid())
-  userId    String
-  payload   Json
-  createdAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model Roster {
-  id        String   @id @default(uuid())
-  date      DateTime
-  userId    String
-  shift     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
 enum TechOpsEntryType {
   repairs_needed
   service_repairs
@@ -452,53 +1342,20 @@ enum TechOpsOrderStatus {
   delivered
 }
 
-model TechOpsEntry {
-  id                    String              @id @default(uuid())
-  serviceRepairNumber   String?             // Auto-generated SR# for service repairs (format: YY-NNNNN)
-  entryType             TechOpsEntryType
-  technicianName        String?
-  technicianId          String?
-  positionType          String?             // "service_technician", "supervisor", "repair_technician"
-  propertyId            String?
-  propertyName          String?
-  propertyAddress       String?
-  issueTitle            String?             // Title for report issues
-  description           String?
-  notes                 String?
-  priority              TechOpsPriority     @default(normal)
-  status                TechOpsStatus       @default(pending)
-  isRead                Boolean             @default(false)
-  chemicals             String?             // For chemical orders/dropoffs - list of chemicals
-  quantity              String?             // Quantity details for orders
-  issueType             String?             // For report issue type
-  photos                String[]
-  reviewedBy            String?
-  reviewedAt            DateTime?
-  resolvedBy            String?             // Name of person who resolved
-  resolvedAt            DateTime?           // When resolved
-  resolutionNotes       String?             // Notes about resolution
+enum tech_ops_entry_type {
+  repairs_needed
+  emergency
+  chemical_order
+}
 
-  // Vendor & Order tracking (for chemical orders)
-  vendorId              String?
-  vendorName            String?
-  orderStatus           TechOpsOrderStatus  @default(pending)
-  invoiceSentAt         DateTime?
-  invoiceSentToVendorId String?
-  invoiceTemplateId     String?
+enum tech_ops_priority {
+  normal
+  urgent
+}
 
-  // Commission & cost tracking (for service repairs/windy day)
-  partsCost             Int?                @default(0) // Parts cost in cents
-  commissionPercent     Int?                // Override commission %
-  commissionAmount      Int?                // Override commission amount in cents
-
-  // Estimate conversion tracking
-  convertedToEstimateId String?
-  convertedAt           DateTime?
-
-  createdAt             DateTime            @default(now())
-  updatedAt             DateTime            @updatedAt
-
-  technician User?     @relation("TechOpsCreator", fields: [technicianId], references: [id], onDelete: SetNull)
-  reviewer   User?     @relation("TechOpsReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
-  property   Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+enum tech_ops_status {
+  pending
+  in_progress
+  resolved
+  cancelled
 }

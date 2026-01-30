@@ -25,9 +25,9 @@ const orderStatuses = ['pending', 'sent_to_vendor', 'confirmed', 'delivered'] as
 const createTechOpsSchema = z.object({
   entryType: z.enum(entryTypes),
   technicianName: z.string().optional(),
-  technicianId: z.string().uuid().optional(),
-  positionType: z.string().optional(), // service_technician, supervisor, repair_technician
-  propertyId: z.string().optional().transform(val => val === '' ? undefined : val).pipe(z.string().uuid().optional()),
+  technicianId: z.string().optional().transform(val => val === '' ? undefined : val),
+  positionType: z.string().optional(),
+  propertyId: z.string().optional().transform(val => val === '' ? undefined : val),
   propertyName: z.string().optional(),
   propertyAddress: z.string().optional(),
   issueTitle: z.string().optional(),
@@ -38,10 +38,8 @@ const createTechOpsSchema = z.object({
   quantity: z.string().optional(),
   issueType: z.string().optional(),
   photos: z.array(z.string()).optional(),
-  // Vendor tracking
   vendorId: z.string().optional(),
   vendorName: z.string().optional(),
-  // Cost tracking
   partsCost: z.number().optional(),
 });
 
@@ -294,7 +292,7 @@ const techOpsRoutes: FastifyPluginAsync = async (fastify) => {
             enum: ['repairs_needed', 'service_repairs', 'chemical_order', 'chemicals_dropoff', 'windy_day_cleanup', 'report_issue', 'supervisor_concerns', 'add_notes', 'chemical_issue', 'equipment_failure', 'safety_concern', 'general_note'],
           },
           technicianName: { type: 'string' },
-          technicianId: { type: 'string', format: 'uuid' },
+          technicianId: { type: 'string' },
           positionType: { type: 'string' },
           propertyId: { type: 'string' },
           propertyName: { type: 'string' },
