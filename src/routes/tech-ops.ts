@@ -27,7 +27,7 @@ const createTechOpsSchema = z.object({
   technicianName: z.string().optional(),
   technicianId: z.string().uuid().optional(),
   positionType: z.string().optional(), // service_technician, supervisor, repair_technician
-  propertyId: z.string().uuid().optional(),
+  propertyId: z.string().optional().transform(val => val === '' ? undefined : val).pipe(z.string().uuid().optional()),
   propertyName: z.string().optional(),
   propertyAddress: z.string().optional(),
   issueTitle: z.string().optional(),
@@ -296,7 +296,7 @@ const techOpsRoutes: FastifyPluginAsync = async (fastify) => {
           technicianName: { type: 'string' },
           technicianId: { type: 'string', format: 'uuid' },
           positionType: { type: 'string' },
-          propertyId: { type: 'string', format: 'uuid' },
+          propertyId: { type: 'string' },
           propertyName: { type: 'string' },
           propertyAddress: { type: 'string' },
           issueTitle: { type: 'string' },
