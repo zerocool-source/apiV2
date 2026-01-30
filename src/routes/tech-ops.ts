@@ -330,13 +330,25 @@ const techOpsRoutes: FastifyPluginAsync = async (fastify) => {
       }
     }
 
+    // Validate propertyId - set to null if it doesn't exist in database
+    let validPropertyId = data.propertyId;
+    if (data.propertyId) {
+      const propertyExists = await fastify.prisma.property.findUnique({
+        where: { id: data.propertyId },
+        select: { id: true },
+      });
+      if (!propertyExists) {
+        validPropertyId = null;
+      }
+    }
+
     const entry = await fastify.prisma.techOpsEntry.create({
       data: {
         entryType: data.entryType,
         technicianName,
         technicianId,
         positionType: data.positionType,
-        propertyId: data.propertyId,
+        propertyId: validPropertyId,
         propertyName: data.propertyName,
         propertyAddress: data.propertyAddress,
         issueTitle: data.issueTitle,
