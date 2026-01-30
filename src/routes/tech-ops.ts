@@ -34,7 +34,7 @@ const createTechOpsSchema = z.object({
   description: z.string().optional(),
   notes: z.string().optional(),
   priority: z.enum(priorities).default('normal'),
-  chemicals: z.string().optional(),
+  chemicals: z.union([z.string(), z.array(z.any()), z.null()]).optional(),
   quantity: z.string().optional(),
   issueType: z.string().optional(),
   photos: z.array(z.string()).optional(),
@@ -289,7 +289,7 @@ const techOpsRoutes: FastifyPluginAsync = async (fastify) => {
           description: { type: 'string' },
           notes: { type: 'string' },
           priority: { type: 'string', enum: ['low', 'normal', 'high', 'urgent'], default: 'normal' },
-          chemicals: { type: 'string' },
+          chemicals: { oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'object' } }, { type: 'null' }] },
           quantity: { type: 'string' },
           issueType: { type: 'string' },
           photos: { type: 'array', items: { type: 'string' } },
@@ -342,6 +342,12 @@ const techOpsRoutes: FastifyPluginAsync = async (fastify) => {
       }
     }
 
+    // Convert chemicals array to JSON string if needed
+    let chemicalsData = data.chemicals;
+    if (Array.isArray(data.chemicals)) {
+      chemicalsData = JSON.stringify(data.chemicals);
+    }
+
     const entry = await fastify.prisma.techOpsEntry.create({
       data: {
         entryType: data.entryType,
@@ -355,7 +361,7 @@ const techOpsRoutes: FastifyPluginAsync = async (fastify) => {
         description: data.description,
         notes: data.notes,
         priority: data.priority,
-        chemicals: data.chemicals,
+        chemicals: chemicalsData,
         quantity: data.quantity,
         issueType: data.issueType,
         photos: data.photos || [],
