@@ -76,6 +76,15 @@ curl -H "Authorization: Bearer $TOKEN" \
   "http://localhost:5000/api/assignments?limit=25&status=pending&updatedSince=2026-01-20T00:00:00.000Z"
 ```
 
+## Admin Web Interface
+
+The project includes a React/TypeScript admin interface for managing technicians:
+- **Location**: `/tech-services` - Admin login and technician management
+- **Features**: Login/logout, view technicians, add/edit/delete technicians
+- **API Base URL**: Configurable via `VITE_API_URL` environment variable (defaults to same origin)
+
+The frontend is served by Vite in development mode, with middleware configured to skip `/api/` and `/docs` routes so they reach Fastify route handlers.
+
 ## External Dependencies
 - **PostgreSQL**: Primary database for all application data, integrated via Replit's built-in PostgreSQL.
 - **Prisma**: ORM for interacting with the PostgreSQL database.
