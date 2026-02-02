@@ -1,6 +1,18 @@
 import { FastifyPluginAsync } from 'fastify';
 
 const healthRoutes: FastifyPluginAsync = async (fastify) => {
+  // Root route for Render's initial check
+  fastify.get('/', {
+    schema: {
+      tags: ['Health'],
+      summary: 'Root endpoint',
+      security: [],
+    },
+  }, async () => {
+    return { status: 'ok' };
+  });
+
+
   fastify.get('/health', {
     schema: {
       tags: ['Health'],
