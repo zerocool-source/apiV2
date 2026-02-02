@@ -1,20 +1,6 @@
 import { build as esbuild } from "esbuild";
 import { rm, readFile } from "fs/promises";
 
-// server deps to bundle to reduce openat(2) syscalls
-// which helps cold start times
-const allowlist = [
-  "bcrypt",
-  "date-fns",
-  "fastify",
-  "fastify-plugin",
-  "pg",
-  "ws",
-  "zod",
-  "zod-to-json-schema",
-  "zod-validation-error",
-];
-
 async function buildAll() {
   await rm("dist", { recursive: true, force: true });
 
@@ -24,7 +10,16 @@ async function buildAll() {
     ...Object.keys(pkg.dependencies || {}),
     ...Object.keys(pkg.devDependencies || {}),
   ];
-  const externals = allDeps.filter((dep) => !allowlist.includes(dep));
+
+  // Native modules that MUST be external (not bundled)
+  const nativeModules = ["bcrypt", "@prisma/client", "prisma"];
+  
+  // Always externalize native modules + all fastify plugins
+  const externals = [...new Set([
+    ...nativeModules,
+    ...allDeps.filter(dep => dep.startsWith("@fastify") || dep.startsWith("fastify")),
+    ...allDeps.filter(dep => nativeModules.some(nm => dep.includes(nm))),
+  ])];
 
   await esbuild({
     entryPoints: ["src/index.ts"],
@@ -39,6 +34,8 @@ async function buildAll() {
     external: externals,
     logLevel: "info",
   });
+
+  console.log("Build complete!");
 }
 
 buildAll().catch((err) => {
