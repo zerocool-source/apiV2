@@ -6,9 +6,7 @@ import { createServer as createViteServer, ViteDevServer } from 'vite';
 import react from '@vitejs/plugin-react';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const __dirname = process.cwd();
 
 const env = {
   PORT: parseInt(process.env.PORT || '5000', 10),
@@ -34,12 +32,12 @@ async function start() {
       appType: 'spa',
       configFile: false,
       plugins: [react()],
-      root: path.resolve(__dirname, '..', 'client'),
+      root: path.resolve(__dirname, 'client'),
       resolve: {
         alias: {
-          '@': path.resolve(__dirname, '..', 'client', 'src'),
-          '@shared': path.resolve(__dirname, '..', 'shared'),
-          '@assets': path.resolve(__dirname, '..', 'attached_assets'),
+          '@': path.resolve(__dirname, 'client', 'src'),
+          '@shared': path.resolve(__dirname, 'shared'),
+          '@assets': path.resolve(__dirname, 'attached_assets'),
         },
       },
     });
@@ -60,7 +58,7 @@ async function start() {
       }
 
       try {
-        const clientTemplate = path.resolve(__dirname, '..', 'client', 'index.html');
+        const clientTemplate = path.resolve(__dirname, 'client', 'index.html');
         let template = await fs.promises.readFile(clientTemplate, 'utf-8');
         template = await vite!.transformIndexHtml(url, template);
         reply.type('text/html').send(template);
