@@ -99,8 +99,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(usersRoutes, { prefix: '/api/users' });
 
   // Global error handler
-  fastify.setErrorHandler((error, request, reply) => {
-    fastify.log.error(error);
+  fastify.setErrorHandler((error: Error & { validation?: unknown; statusCode?: number }, request, reply) => {
+    fastify.log.error({ err: error, url: request.url, method: request.method }, 'Request error');
     
     if (error.validation) {
       return reply.status(400).send({
@@ -110,8 +110,9 @@ export async function buildApp(): Promise<FastifyInstance> {
       });
     }
 
-    return reply.status(error.statusCode || 500).send({
-      error: 'INTERNAL_ERROR',
+    const statusCode = error.statusCode || 500;
+    return reply.status(statusCode).send({
+      error: statusCode >= 500 ? 'INTERNAL_ERROR' : 'REQUEST_ERROR',
       message: error.message || 'Internal server error',
     });
   });

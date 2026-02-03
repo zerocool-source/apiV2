@@ -1,0 +1,45 @@
+We are getting API Error: 500 {"type":"error","error":{"type":"api_error","message":"Internal server error"},"request_id":"req_011CXm..."} from our app. This is coming from the Anthropic Claude API, not from our Fastify server itself.
+
+Please do a FULL audit and fix of this API project. Here is everything to check and fix:
+
+1. ANTHROPIC API KEY — Search the entire codebase for any file that calls the Anthropic API (search for "anthropic", "claude", "poolbrain", "openai", "ai/chat", "messages"). If we are sending requests to https://api.anthropic.com/v1/messages, make sure:
+   - The API key env variable is ANTHROPIC_API_KEY (not OPENAI_API_KEY)
+   - The key is passed as header "x-api-key" (NOT "Authorization: Bearer")
+   - The header "anthropic-version": "2023-06-01" is included
+   - The request body includes "model" (use "claude-sonnet-4-20250514"), "max_tokens" (required), and "messages" array
+   - The model string is valid and not a typo or deprecated model
+   - If we switched to using OPENAI_API_KEY recently, revert that for any Anthropic API calls
+
+2. BCRYPT FIX — The recent commit "Fix bcrypt native module bundling" suggests auth may be broken. Check that:
+   - bcrypt or bcryptjs is properly installed and importable
+   - If bcrypt native module fails, switch to bcryptjs as a fallback
+   - The login route at /api/auth/login works and returns a valid JWT
+   - Add a try/catch around bcrypt.compare() and bcrypt.hash() calls with proper error logging
+
+3. PRISMA SYNC — The recent commit "Remove foreign key constraint for property in tech ops" changed the schema. Run:
+   - npx prisma generate
+   - npx prisma migrate deploy
+   - Verify the Prisma client matches the current schema
+   - Check that no routes reference old foreign key relationships that were removed
+
+4. MISSING DEPENDENCIES — The recent commit "Remove all frontend code and dependencies from the API" may have removed packages the server needs. Check:
+   - Run "npm ls 2>&1 | grep MISSING" to find broken deps
+   - Run "npm install" to ensure all deps are present
+   - Check every import in src/ to make sure no file imports a removed package
+
+5. ERROR HANDLING — Add proper error handling to ALL routes:
+   - Every route should have try/catch with detailed error logging
+   - Log the full error object (not just message) to console
+   - Return proper error responses with status codes (not just generic 500)
+   - Add a global error handler to the Fastify instance
+
+6. HEALTH CHECK — Make sure the root endpoint and /api/health return proper responses so we can verify the server is running.
+
+7. Add console.log statements at server startup that show:
+   - Which port the server is listening on
+   - Whether DATABASE_URL is set (don't log the actual value)
+   - Whether ANTHROPIC_API_KEY is set (don't log the actual value)
+   - Whether JWT_SECRET is set
+   - The NODE_ENV value
+
+Fix all of these issues. Show me what you changed.
