@@ -95,6 +95,7 @@ const estimatesRoutes: FastifyPluginAsync = async (fastify) => {
       name: string;
       unitPriceCents: number;
       matchConfidence: 'high' | 'medium' | 'low';
+      matchScore: number;
     }> = [];
     const debugUnmatched: Array<{ query: string; qty: number }> = [];
 
@@ -255,6 +256,7 @@ Be specific with search terms - include brand names if mentioned. For heater iss
               name: product.name,
               unitPriceCents: product.unitPriceCents,
               matchConfidence: confidence,
+              matchScore: bestMatch.score,
             });
           } else {
             // Low score or no match - add to unmatched for manual review
