@@ -147,47 +147,93 @@ Be specific with search terms - include brand names if mentioned. For heater iss
         // Track matched product SKUs to avoid duplicates
         const matchedSkus = new Set<string>();
 
+        // Scoring function for product matching
+        const scoreProduct = (query: string, product: { name: string; sku: string }): number => {
+          // Tokenize query: split on whitespace, lowercase, filter tokens < 2 chars
+          const tokens = query.toLowerCase().split(/\s+/).filter(t => t.length >= 2);
+          const nameLower = product.name.toLowerCase();
+          const skuLower = product.sku.toLowerCase();
+          const queryLower = query.toLowerCase();
+          
+          let score = 0;
+          
+          // +6 if product.name contains the full query phrase as a substring
+          if (nameLower.includes(queryLower)) {
+            score += 6;
+          }
+          
+          // +5 if all query tokens appear in product.name
+          if (tokens.length > 0 && tokens.every(t => nameLower.includes(t))) {
+            score += 5;
+          }
+          
+          // +3 for each token that appears in product.sku
+          for (const token of tokens) {
+            if (skuLower.includes(token)) {
+              score += 3;
+            }
+          }
+          
+          // +2 for each token that appears in product.name
+          for (const token of tokens) {
+            if (nameLower.includes(token)) {
+              score += 2;
+            }
+          }
+          
+          return score;
+        };
+
         // Search for each extracted item in the product catalog
         for (const item of items) {
-          let bestMatch: { product: any; confidence: 'high' | 'medium' | 'low' } | null = null;
-
-          // Build search query using all terms at once for better matching
-          const searchConditions = item.searchTerms.flatMap(term => [
+          const query = item.description;
+          
+          // Build search conditions from description and search terms
+          const allTerms = [query, ...item.searchTerms];
+          const searchConditions = allTerms.flatMap(term => [
             { name: { contains: term, mode: 'insensitive' as const } },
             { sku: { contains: term, mode: 'insensitive' as const } },
           ]);
+          
+          // Also search by individual tokens from the query
+          const queryTokens = query.toLowerCase().split(/\s+/).filter(t => t.length >= 2);
+          for (const token of queryTokens) {
+            searchConditions.push({ name: { contains: token, mode: 'insensitive' as const } });
+            searchConditions.push({ sku: { contains: token, mode: 'insensitive' as const } });
+          }
 
           const searchResults = await fastify.prisma.product.findMany({
             where: {
               OR: searchConditions,
               ...(item.category ? { category: { equals: item.category, mode: 'insensitive' } } : {}),
             },
-            take: 10,
+            take: 20,
             orderBy: { name: 'asc' },
           });
 
-          if (searchResults.length > 0) {
-            // Filter out already-matched products to avoid duplicates
-            const availableProducts = searchResults.filter(p => !matchedSkus.has(p.sku));
-            
-            if (availableProducts.length > 0) {
-              // Determine confidence based on match quality
-              const descLower = item.description.toLowerCase();
-              const exactMatch = availableProducts.find(p => {
-                const nameLower = p.name.toLowerCase();
-                return nameLower.includes(descLower) ||
-                  item.searchTerms.every(t => nameLower.includes(t.toLowerCase()));
-              });
-              
-              if (exactMatch) {
-                bestMatch = { product: exactMatch, confidence: 'high' };
+          // Filter out already-matched products and score remaining candidates
+          const availableProducts = searchResults.filter(p => !matchedSkus.has(p.sku));
+          
+          let bestMatch: { product: any; score: number; confidence: 'high' | 'medium' | 'low' } | null = null;
+          
+          for (const product of availableProducts) {
+            const score = scoreProduct(query, product);
+            if (!bestMatch || score > bestMatch.score) {
+              // Determine confidence based on score
+              let confidence: 'high' | 'medium' | 'low';
+              if (score >= 10) {
+                confidence = 'high';
+              } else if (score >= 6) {
+                confidence = 'medium';
               } else {
-                bestMatch = { product: availableProducts[0], confidence: 'medium' };
+                confidence = 'low';
               }
+              bestMatch = { product, score, confidence };
             }
           }
 
-          if (bestMatch) {
+          // Only add as priced line item if score > 5 (medium or high confidence)
+          if (bestMatch && bestMatch.score > 5) {
             const { product, confidence } = bestMatch;
             matchedSkus.add(product.sku); // Track this SKU
             lines.push({
@@ -199,7 +245,7 @@ Be specific with search terms - include brand names if mentioned. For heater iss
               totalCents: product.unitPriceCents * item.quantity,
               matchConfidence: confidence,
             });
-            assumptions.push(`Matched "${item.description}" to ${product.name} (${confidence} confidence)`);
+            assumptions.push(`Matched "${item.description}" to ${product.name} (${confidence} confidence, score: ${bestMatch.score})`);
             
             // Track for debug
             debugMatches.push({
@@ -211,17 +257,8 @@ Be specific with search terms - include brand names if mentioned. For heater iss
               matchConfidence: confidence,
             });
           } else {
-            // Add as unpriced line item for manual review
-            lines.push({
-              type: 'part',
-              sku: null,
-              description: `${item.description} (needs manual lookup)`,
-              quantity: item.quantity,
-              unitPriceCents: 0,
-              totalCents: 0,
-              matchConfidence: 'low',
-            });
-            assumptions.push(`Could not find product match for "${item.description}" - needs manual lookup`);
+            // Low score or no match - add to unmatched for manual review
+            assumptions.push(`Could not find confident match for "${item.description}" - needs manual lookup${bestMatch ? ` (best score: ${bestMatch.score})` : ''}`);
             
             // Track for debug
             debugUnmatched.push({
