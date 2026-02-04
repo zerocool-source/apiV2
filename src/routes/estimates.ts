@@ -391,9 +391,11 @@ Be specific with search terms - include brand names if mentioned. For heater iss
     preHandler: [fastify.requireAuth],
   }, async (request, reply) => {
     const schema = z.object({
-      jobText: z.string().min(1),
+      jobText: z.string().min(1).optional(),
+      query: z.string().min(1).optional(),
       category: z.string().optional(),
       productId: z.string().uuid(),
+      requestHash: z.string().optional(),
     });
 
     const result = schema.safeParse(request.body);
@@ -401,8 +403,13 @@ Be specific with search terms - include brand names if mentioned. For heater iss
       return badRequest(reply, 'Invalid request body', result.error.flatten());
     }
 
-    const { jobText, category, productId } = result.data;
+    const { jobText, query, category, productId, requestHash } = result.data;
     const userId = request.user.sub;
+
+    // Must provide either query or jobText
+    if (!query && !jobText) {
+      return badRequest(reply, 'Either query or jobText must be provided');
+    }
 
     // Verify product exists
     const product = await fastify.prisma.product.findUnique({
@@ -412,8 +419,10 @@ Be specific with search terms - include brand names if mentioned. For heater iss
       return notFound(reply, 'Product not found');
     }
 
-    // Compute queryHash using standardized method
-    const queryHash = makeQueryHash(jobText, category);
+    // Compute queryHash: prefer query over jobText
+    const queryHash = query 
+      ? makeQueryHash(query, category)
+      : makeQueryHash(jobText!, category);
 
     await fastify.prisma.techSelection.create({
       data: {
@@ -424,7 +433,10 @@ Be specific with search terms - include brand names if mentioned. For heater iss
       },
     });
 
-    return { ok: true, queryHash };
+    // Return requestHash if provided for correlation
+    return requestHash 
+      ? { ok: true, queryHash, requestHash }
+      : { ok: true, queryHash };
   });
 
   // GET /api/estimates
