@@ -102,6 +102,9 @@ const estimatesRoutes: FastifyPluginAsync = async (fastify) => {
       }
     }
 
+    // Start timing for logging
+    const startTime = Date.now();
+
     const result = generateEstimateSchema.safeParse(request.body);
     if (!result.success) {
       return badRequest(reply, 'Invalid request body', result.error.flatten());
@@ -120,6 +123,14 @@ const estimatesRoutes: FastifyPluginAsync = async (fastify) => {
     
     const lines: EstimateLine[] = [];
     const assumptions: string[] = [];
+    
+    // Metrics tracking for logging
+    let logModel = 'gpt-4o-mini';
+    let logPartsSuggested = 0;
+    let logPartsMatched = 0;
+    let logPartsUnmatched = 0;
+    let logDidFallback = false;
+    let logTotalCents = 0;
     
     // Debug tracking
     let debugModel: string | null = null;
@@ -188,6 +199,9 @@ Be specific with search terms - include brand names if mentioned. For heater iss
         assumptions.push('AI extraction failed - using basic estimate');
       } else {
         const { items, laborHours, summary, assumptions: aiAssumptions } = extracted.data;
+        
+        // Track parts suggested by AI
+        logPartsSuggested = items.length;
         
         // Add AI assumptions
         assumptions.push(...aiAssumptions);
@@ -305,6 +319,9 @@ Be specific with search terms - include brand names if mentioned. For heater iss
               matchConfidence: confidence,
               matchScore: bestMatch.score,
             });
+            
+            // Track for logging
+            logPartsMatched++;
           } else {
             // Low score or no match - add to unmatched for manual review
             assumptions.push(`Could not find confident match for "${item.description}" - needs manual lookup${bestMatch ? ` (best score: ${bestMatch.score})` : ''}`);
@@ -314,6 +331,9 @@ Be specific with search terms - include brand names if mentioned. For heater iss
               query: item.description,
               qty: item.quantity,
             });
+            
+            // Track for logging
+            logPartsUnmatched++;
             
             // Get top 5 candidates for unmatched items (for debug)
             const scoredCandidates = searchResults
@@ -374,6 +394,25 @@ Be specific with search terms - include brand names if mentioned. For heater iss
           };
         }
 
+        // Update totals for logging
+        logTotalCents = totalCents;
+
+        // Structured logging
+        console.log(JSON.stringify({
+          event: 'estimate_generate',
+          timestamp: new Date().toISOString(),
+          userId: userId || null,
+          requestHash,
+          durationMs: Date.now() - startTime,
+          model: logModel,
+          partsSuggested: logPartsSuggested,
+          partsMatched: logPartsMatched,
+          partsUnmatched: logPartsUnmatched,
+          totalCents: logTotalCents,
+          didFallback: logDidFallback,
+          rateLimited: false,
+        }));
+
         return response;
       }
     } catch (error) {
@@ -418,6 +457,26 @@ Be specific with search terms - include brand names if mentioned. For heater iss
         unmatchedCandidates: debugUnmatchedCandidates,
       };
     }
+
+    // Mark as fallback and log
+    logDidFallback = true;
+    logTotalCents = totalCents;
+
+    // Structured logging (fallback case)
+    console.log(JSON.stringify({
+      event: 'estimate_generate',
+      timestamp: new Date().toISOString(),
+      userId: userId || null,
+      requestHash,
+      durationMs: Date.now() - startTime,
+      model: logModel,
+      partsSuggested: logPartsSuggested,
+      partsMatched: logPartsMatched,
+      partsUnmatched: logPartsUnmatched,
+      totalCents: logTotalCents,
+      didFallback: logDidFallback,
+      rateLimited: false,
+    }));
 
     return response;
   });
