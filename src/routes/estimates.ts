@@ -1,8 +1,14 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
+import { createHash } from 'crypto';
 import OpenAI from 'openai';
 import { badRequest, notFound } from '../utils/errors';
 import { makeQueryHash } from '../utils/queryHash';
+
+// Compute requestHash for audit/debug
+function computeRequestHash(jobText: string): string {
+  return createHash('sha256').update(jobText.trim().toLowerCase()).digest('hex');
+}
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -72,8 +78,25 @@ const estimatesRoutes: FastifyPluginAsync = async (fastify) => {
 
     const { jobText, laborRateCents = DEFAULT_LABOR_RATE_CENTS } = result.data;
     
+    // Compute requestHash for audit
+    const requestHash = computeRequestHash(jobText);
+    const isProduction = process.env.NODE_ENV === 'production';
+    
     const lines: EstimateLine[] = [];
     const assumptions: string[] = [];
+    
+    // Debug tracking
+    let debugModel: string | null = null;
+    let debugExtracted: any = null;
+    const debugMatches: Array<{
+      query: string;
+      productId: string;
+      sku: string;
+      name: string;
+      unitPriceCents: number;
+      matchConfidence: 'high' | 'medium' | 'low';
+    }> = [];
+    const debugUnmatched: Array<{ query: string; qty: number }> = [];
 
     // Use OpenAI to extract structured repair items from job text
     const systemPrompt = `You are a pool equipment repair estimator assistant. Given a job description, extract the parts/materials needed and estimate labor hours.
@@ -93,8 +116,11 @@ Common pool equipment categories: Heaters, Pumps, Filters, Cleaners, Controls, L
 Be specific with search terms - include brand names if mentioned. For heater issues, consider igniter kits, heat exchangers, gas valves, thermostats. For pump issues, consider motors, seals, impellers, baskets.`;
 
     try {
+      const modelName = 'gpt-4o-mini';
+      debugModel = modelName;
+      
       const completion = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: modelName,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: jobText },
@@ -106,6 +132,7 @@ Be specific with search terms - include brand names if mentioned. For heater iss
 
       const responseText = completion.choices[0]?.message?.content || '{}';
       const parsed = JSON.parse(responseText);
+      debugExtracted = parsed;
       const extracted = extractedItemSchema.safeParse(parsed);
 
       if (!extracted.success) {
@@ -173,6 +200,16 @@ Be specific with search terms - include brand names if mentioned. For heater iss
               matchConfidence: confidence,
             });
             assumptions.push(`Matched "${item.description}" to ${product.name} (${confidence} confidence)`);
+            
+            // Track for debug
+            debugMatches.push({
+              query: item.description,
+              productId: product.id,
+              sku: product.sku,
+              name: product.name,
+              unitPriceCents: product.unitPriceCents,
+              matchConfidence: confidence,
+            });
           } else {
             // Add as unpriced line item for manual review
             lines.push({
@@ -185,6 +222,12 @@ Be specific with search terms - include brand names if mentioned. For heater iss
               matchConfidence: 'low',
             });
             assumptions.push(`Could not find product match for "${item.description}" - needs manual lookup`);
+            
+            // Track for debug
+            debugUnmatched.push({
+              query: item.description,
+              qty: item.quantity,
+            });
           }
         }
 
@@ -205,7 +248,8 @@ Be specific with search terms - include brand names if mentioned. For heater iss
         const taxCents = Math.round(subtotalCents * TAX_RATE);
         const totalCents = subtotalCents + taxCents;
 
-        const estimate: GeneratedEstimate = {
+        const response: any = {
+          requestHash,
           summary: summary || `Estimate for: ${jobText.substring(0, 100)}${jobText.length > 100 ? '...' : ''}`,
           lines,
           subtotalCents,
@@ -214,7 +258,17 @@ Be specific with search terms - include brand names if mentioned. For heater iss
           assumptions,
         };
 
-        return estimate;
+        // Include debug payload only in non-production
+        if (!isProduction) {
+          response.debug = {
+            model: debugModel,
+            extracted: debugExtracted,
+            matches: debugMatches,
+            unmatched: debugUnmatched,
+          };
+        }
+
+        return response;
       }
     } catch (error) {
       fastify.log.error({ error }, 'OpenAI API error');
@@ -238,7 +292,8 @@ Be specific with search terms - include brand names if mentioned. For heater iss
     const taxCents = Math.round(subtotalCents * TAX_RATE);
     const totalCents = subtotalCents + taxCents;
 
-    const estimate: GeneratedEstimate = {
+    const response: any = {
+      requestHash,
       summary: `Estimate for: ${jobText.substring(0, 100)}${jobText.length > 100 ? '...' : ''}`,
       lines,
       subtotalCents,
@@ -247,7 +302,17 @@ Be specific with search terms - include brand names if mentioned. For heater iss
       assumptions,
     };
 
-    return estimate;
+    // Include debug payload only in non-production (fallback case)
+    if (!isProduction) {
+      response.debug = {
+        model: debugModel,
+        extracted: debugExtracted,
+        matches: debugMatches,
+        unmatched: debugUnmatched,
+      };
+    }
+
+    return response;
   });
 
   // POST /api/estimates/selection - Log tech's product selection for learning
