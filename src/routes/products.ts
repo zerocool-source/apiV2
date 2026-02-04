@@ -1,5 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
+import { createHash } from 'crypto';
 import { badRequest, conflict } from '../utils/errors';
 
 const createProductSchema = z.object({
@@ -15,6 +16,23 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [fastify.requireAuth],
   }, async (request) => {
     const query = request.query as { q?: string; category?: string };
+    const userId = request.user.sub;
+    
+    // Compute queryHash for learning lookup
+    const hashInput = `${query.q || ''}|${query.category || ''}`;
+    const queryHash = createHash('sha256').update(hashInput).digest('hex');
+    
+    // Get user's past selections for this query
+    const pastSelections = await fastify.prisma.techSelection.findMany({
+      where: {
+        userId,
+        queryHash,
+      },
+      orderBy: { chosenAt: 'desc' },
+      take: 10,
+      select: { productId: true },
+    });
+    const boostedProductIds = pastSelections.map(s => s.productId);
     
     const where: any = { active: true };
     
@@ -32,6 +50,7 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
     const products = await fastify.prisma.product.findMany({
       where,
       select: {
+        id: true,
         sku: true,
         name: true,
         category: true,
@@ -41,6 +60,30 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
       orderBy: { name: 'asc' },
       take: 50,
     });
+
+    // Re-order: boosted products first (in selection recency order), then rest
+    if (boostedProductIds.length > 0) {
+      const boostedSet = new Set(boostedProductIds);
+      const boosted: typeof products = [];
+      const rest: typeof products = [];
+      
+      // First, add products in boostedProductIds order
+      for (const productId of boostedProductIds) {
+        const product = products.find(p => p.id === productId);
+        if (product && !boosted.some(b => b.id === productId)) {
+          boosted.push(product);
+        }
+      }
+      
+      // Then add remaining products
+      for (const product of products) {
+        if (!boostedSet.has(product.id)) {
+          rest.push(product);
+        }
+      }
+      
+      return [...boosted, ...rest];
+    }
 
     return products;
   });
