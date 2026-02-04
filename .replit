@@ -53,3 +53,6 @@ waitForPort = 5000
 CORS_ORIGIN = "*"
 HOST = "0.0.0.0"
 PORT = "5000"
+
+[agent]
+integrations = ["javascript_openai_ai_integrations:2.0.0"]

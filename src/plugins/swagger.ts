@@ -41,6 +41,8 @@ const swaggerPluginInternal: FastifyPluginAsync = async (fastify) => {
         { name: 'Assignments', description: 'Work assignment scheduling and lifecycle' },
         { name: 'Properties', description: 'Property/pool management' },
         { name: 'Jobs', description: 'Job and repair work management' },
+        { name: 'Estimates', description: 'AI-powered estimate generation and management' },
+        { name: 'Products', description: 'Product catalog and search' },
         { name: 'Metrics', description: 'Operational metrics and analytics' },
         { name: 'Emergencies', description: 'Emergency reporting' },
         { name: 'Messages', description: 'Team messaging' },

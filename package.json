@@ -24,16 +24,20 @@
     "bcrypt": "^6.0.0",
     "csv-parse": "^6.1.0",
     "date-fns": "^3.6.0",
+    "drizzle-zod": "^0.8.3",
     "esbuild": "^0.25.0",
     "fastify": "^5.7.2",
     "fastify-plugin": "^5.1.0",
+    "openai": "^6.17.0",
+    "p-limit": "^7.3.0",
+    "p-retry": "^7.1.1",
     "pg": "^8.16.3",
     "prisma": "^5.22.0",
     "tsx": "^4.20.5",
     "ws": "^8.18.0",
     "zod": "^3.25.76",
     "zod-to-json-schema": "^3.25.1",
-    "zod-validation-error": "^3.4.0"
+    "zod-validation-error": "^3.5.4"
   },
   "devDependencies": {
     "@types/node": "20.19.27",

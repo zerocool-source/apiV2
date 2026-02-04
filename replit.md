@@ -86,6 +86,68 @@ curl -H "Authorization: Bearer $TOKEN" \
   "http://localhost:5000/api/properties?updatedSince=2026-01-01T00:00:00.000Z"
 ```
 
+## AI-Powered Estimate Generation
+
+The API integrates OpenAI (via Replit AI Integrations) for intelligent estimate generation.
+
+### POST /api/estimates/generate
+
+Generates a structured repair estimate from natural language job descriptions.
+
+**Request:**
+```json
+{
+  "jobText": "Jandy JXI heater not igniting. Likely needs igniter kit.",
+  "laborRateCents": 14500  // optional, defaults to $145/hr
+}
+```
+
+**Response:**
+```json
+{
+  "summary": "Replace igniter kit on Jandy JXI heater due to ignition failure.",
+  "lines": [
+    {
+      "type": "part",
+      "sku": "R0457502",
+      "description": "Igniter Kit Jandy JXI",
+      "quantity": 1,
+      "unitPriceCents": 9923,
+      "totalCents": 9923,
+      "matchConfidence": "high"
+    },
+    {
+      "type": "labor",
+      "sku": null,
+      "description": "Labor (2 hours @ $145.00/hr)",
+      "quantity": 2,
+      "unitPriceCents": 14500,
+      "totalCents": 29000
+    }
+  ],
+  "subtotalCents": 38923,
+  "taxCents": 3211,
+  "totalCents": 42134,
+  "assumptions": [
+    "Gas supply is confirmed and functioning.",
+    "Matched \"igniter kit\" to Igniter Kit Jandy JXI (high confidence)",
+    "AI estimated 2 labor hours"
+  ]
+}
+```
+
+**Match Confidence Levels:**
+- `high`: Exact product match found in catalog
+- `medium`: Partial match, may need verification
+- `low`: No match found, needs manual lookup
+
+### Product Catalog & Learning
+
+- **2101 products** imported from CSV with SKU, name, category, price
+- **TechSelection model** tracks tech's product choices for learning
+- **POST /api/estimates/selection** logs product selections by queryHash
+- **GET /api/products/search** boosts previously selected products
+
 ## External Dependencies
 - **PostgreSQL**: Primary database for all application data.
 - **Prisma**: ORM for interacting with the PostgreSQL database.
@@ -94,3 +156,4 @@ curl -H "Authorization: Bearer $TOKEN" \
 - **@fastify/jwt**: For JWT token-based authentication.
 - **bcrypt**: For secure password hashing.
 - **Zod**: For schema validation of API requests.
+- **OpenAI** (via Replit AI Integrations): For intelligent estimate generation.
