@@ -90,11 +90,9 @@ const repairRequestsRoutes: FastifyPluginAsync = async (fastify) => {
         propertyId,
         propertyName,
         propertyAddress,
-        technicianId,
-        technicianName,
+        technicianId: technicianId || userId,
+        technicianName: technicianName || (await fastify.prisma.technicianProfile.findFirst({ where: { userId }, select: { name: true } }))?.name,
         description: jobType,
-        scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
-        creatorId: userId,
         status: 'pending',
       },
     });
