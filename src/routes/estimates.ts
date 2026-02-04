@@ -34,6 +34,10 @@ const createEstimateSchema = z.object({
 const generateEstimateSchema = z.object({
   jobText: z.string().min(1),
   laborRateCents: z.number().int().min(11500).max(16500).optional(),
+  applySelections: z.array(z.object({
+    query: z.string().min(1),
+    productId: z.string().uuid(),
+  })).optional(),
 });
 
 interface EstimateLine {
@@ -110,7 +114,7 @@ const estimatesRoutes: FastifyPluginAsync = async (fastify) => {
       return badRequest(reply, 'Invalid request body', result.error.flatten());
     }
 
-    const { jobText, laborRateCents = DEFAULT_LABOR_RATE_CENTS } = result.data;
+    const { jobText, laborRateCents = DEFAULT_LABOR_RATE_CENTS, applySelections } = result.data;
 
     // Input guardrail: reject jobText > 2000 characters
     if (jobText.length > 2000) {
@@ -120,6 +124,70 @@ const estimatesRoutes: FastifyPluginAsync = async (fastify) => {
     // Compute requestHash for audit
     const requestHash = computeRequestHash(jobText);
     const isProduction = process.env.NODE_ENV === 'production';
+    
+    // Handle applySelections mode: skip OpenAI, build estimate from confirmed selections
+    if (applySelections && applySelections.length > 0) {
+      const lines: EstimateLine[] = [];
+      const assumptions: string[] = [];
+      
+      // Deduplicate by productId
+      const seenProductIds = new Set<string>();
+      const uniqueSelections = applySelections.filter(sel => {
+        if (seenProductIds.has(sel.productId)) return false;
+        seenProductIds.add(sel.productId);
+        return true;
+      });
+      
+      // Load products and build part lines
+      for (const selection of uniqueSelections) {
+        const product = await fastify.prisma.product.findUnique({
+          where: { id: selection.productId },
+        });
+        
+        if (product) {
+          lines.push({
+            type: 'part',
+            sku: product.sku,
+            description: product.name,
+            quantity: 1,
+            unitPriceCents: product.unitPriceCents,
+            totalCents: product.unitPriceCents,
+            matchConfidence: 'high', // User confirmed selection
+          });
+          assumptions.push(`User selected "${product.name}" for "${selection.query}"`);
+        } else {
+          assumptions.push(`Product ${selection.productId} not found for "${selection.query}"`);
+        }
+      }
+      
+      // Add labor line (default 2 hours for confirmed selections)
+      const laborHours = 2;
+      const laborTotal = laborHours * laborRateCents;
+      lines.push({
+        type: 'labor',
+        sku: null,
+        description: `Labor (${laborHours} hours @ $${(laborRateCents / 100).toFixed(2)}/hr)`,
+        quantity: laborHours,
+        unitPriceCents: laborRateCents,
+        totalCents: laborTotal,
+      });
+      assumptions.push(`Standard ${laborHours}-hour labor estimate`);
+      
+      // Calculate totals
+      const subtotalCents = lines.reduce((sum, line) => sum + line.totalCents, 0);
+      const taxCents = Math.round(subtotalCents * TAX_RATE);
+      const totalCents = subtotalCents + taxCents;
+      
+      return {
+        requestHash,
+        summary: `Confirmed estimate for: ${jobText.substring(0, 100)}${jobText.length > 100 ? '...' : ''}`,
+        lines,
+        subtotalCents,
+        taxCents,
+        totalCents,
+        assumptions,
+      };
+    }
     
     const lines: EstimateLine[] = [];
     const assumptions: string[] = [];
