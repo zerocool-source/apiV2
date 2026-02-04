@@ -307,6 +307,18 @@ model Product {
   updatedAt      DateTime @updatedAt
 }
 
+model TechSelection {
+  id        String   @id @default(uuid())
+  userId    String
+  queryHash String
+  category  String?
+  productId String
+  chosenAt  DateTime @default(now())
+
+  @@index([userId, queryHash])
+  @@index([productId])
+}
+
 model TimeEntry {
   id        String   @id @default(uuid())
   jobId     String

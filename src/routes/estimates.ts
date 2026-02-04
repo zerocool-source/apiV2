@@ -1,5 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
+import { createHash } from 'crypto';
 import { badRequest, notFound } from '../utils/errors';
 
 const createEstimateSchema = z.object({
@@ -101,6 +102,40 @@ const estimatesRoutes: FastifyPluginAsync = async (fastify) => {
     };
 
     return estimate;
+  });
+
+  // POST /api/estimates/selection - Log tech's product selection for learning
+  fastify.post('/selection', {
+    preHandler: [fastify.requireAuth],
+  }, async (request, reply) => {
+    const schema = z.object({
+      jobText: z.string().min(1),
+      category: z.string().optional(),
+      productId: z.string().uuid(),
+    });
+
+    const result = schema.safeParse(request.body);
+    if (!result.success) {
+      return badRequest(reply, 'Invalid request body', result.error.flatten());
+    }
+
+    const { jobText, category, productId } = result.data;
+    const userId = request.user.sub;
+
+    // Compute queryHash: sha256(jobText + '|' + (category||''))
+    const hashInput = `${jobText}|${category || ''}`;
+    const queryHash = createHash('sha256').update(hashInput).digest('hex');
+
+    await fastify.prisma.techSelection.create({
+      data: {
+        userId,
+        queryHash,
+        category: category || null,
+        productId,
+      },
+    });
+
+    return { ok: true };
   });
 
   // GET /api/estimates
