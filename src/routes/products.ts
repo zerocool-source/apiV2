@@ -14,7 +14,7 @@ const createProductSchema = z.object({
 const productsRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /api/products/search
   fastify.get('/search', {
-    preHandler: [fastify.requireAuth],
+    preHandler: [fastify.requireRole(['tech', 'repair', 'supervisor', 'admin'])],
   }, async (request, reply) => {
     const userId = request.user.sub;
     

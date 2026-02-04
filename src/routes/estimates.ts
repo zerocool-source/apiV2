@@ -74,7 +74,7 @@ const DEFAULT_LABOR_RATE_CENTS = 14500;
 const estimatesRoutes: FastifyPluginAsync = async (fastify) => {
   // POST /api/estimates/generate
   fastify.post('/generate', {
-    preHandler: [fastify.requireAuth],
+    preHandler: [fastify.requireRole(['tech', 'repair', 'supervisor', 'admin'])],
   }, async (request, reply) => {
     // Rate limiting: check by userId first, fallback to IP
     const userId = request.user?.sub;
@@ -392,6 +392,11 @@ Be specific with search terms - include brand names if mentioned. For heater iss
           assumptions,
         };
 
+        // Always include unmatchedParts with candidates in response (even in production)
+        if (debugUnmatchedCandidates.length > 0) {
+          response.unmatchedParts = debugUnmatchedCandidates;
+        }
+
         // Include debug payload only in non-production
         if (!isProduction) {
           response.debug = {
@@ -498,7 +503,7 @@ Be specific with search terms - include brand names if mentioned. For heater iss
 
   // POST /api/estimates/selection - Log tech's product selection for learning
   fastify.post('/selection', {
-    preHandler: [fastify.requireAuth],
+    preHandler: [fastify.requireRole(['tech', 'repair', 'supervisor', 'admin'])],
   }, async (request, reply) => {
     // Rate limiting by userId
     const userId = request.user.sub;

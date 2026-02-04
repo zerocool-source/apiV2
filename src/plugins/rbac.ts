@@ -1,6 +1,5 @@
 import { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
 import fp from 'fastify-plugin';
-import { forbidden } from '../utils/errors';
 
 type Role = 'tech' | 'supervisor' | 'repair' | 'admin';
 
@@ -25,7 +24,8 @@ const rbacPlugin: FastifyPluginAsync = async (fastify) => {
       const userRole = request.user?.role as Role;
       
       if (!userRole || !roles.includes(userRole)) {
-        return forbidden(reply, `Access denied. Required roles: ${roles.join(', ')}`);
+        reply.code(403);
+        return { error: 'forbidden', message: 'Insufficient role permissions' };
       }
     };
   });
