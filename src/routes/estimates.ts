@@ -98,6 +98,17 @@ const estimatesRoutes: FastifyPluginAsync = async (fastify) => {
       matchScore: number;
     }> = [];
     const debugUnmatched: Array<{ query: string; qty: number }> = [];
+    const debugUnmatchedCandidates: Array<{
+      query: string;
+      qty: number;
+      candidates: Array<{
+        productId: string;
+        sku: string;
+        name: string;
+        unitPriceCents: number;
+        matchScore: number;
+      }>;
+    }> = [];
 
     // Use OpenAI to extract structured repair items from job text
     const systemPrompt = `You are a pool equipment repair estimator assistant. Given a job description, extract the parts/materials needed and estimate labor hours.
@@ -208,7 +219,7 @@ Be specific with search terms - include brand names if mentioned. For heater iss
               OR: searchConditions,
               ...(item.category ? { category: { equals: item.category, mode: 'insensitive' } } : {}),
             },
-            take: 20,
+            take: 50,
             orderBy: { name: 'asc' },
           });
 
@@ -267,6 +278,25 @@ Be specific with search terms - include brand names if mentioned. For heater iss
               query: item.description,
               qty: item.quantity,
             });
+            
+            // Get top 5 candidates for unmatched items (for debug)
+            const scoredCandidates = searchResults
+              .map(p => ({ product: p, score: scoreProduct(item.description, p) }))
+              .filter(c => c.score > 0)
+              .sort((a, b) => b.score - a.score)
+              .slice(0, 5);
+            
+            debugUnmatchedCandidates.push({
+              query: item.description,
+              qty: item.quantity,
+              candidates: scoredCandidates.map(c => ({
+                productId: c.product.id,
+                sku: c.product.sku,
+                name: c.product.name,
+                unitPriceCents: c.product.unitPriceCents,
+                matchScore: c.score,
+              })),
+            });
           }
         }
 
@@ -304,6 +334,7 @@ Be specific with search terms - include brand names if mentioned. For heater iss
             extracted: debugExtracted,
             matches: debugMatches,
             unmatched: debugUnmatched,
+            unmatchedCandidates: debugUnmatchedCandidates,
           };
         }
 
@@ -348,6 +379,7 @@ Be specific with search terms - include brand names if mentioned. For heater iss
         extracted: debugExtracted,
         matches: debugMatches,
         unmatched: debugUnmatched,
+        unmatchedCandidates: debugUnmatchedCandidates,
       };
     }
 
