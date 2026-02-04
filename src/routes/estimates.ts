@@ -4,6 +4,11 @@ import { createHash } from 'crypto';
 import OpenAI from 'openai';
 import { badRequest, notFound } from '../utils/errors';
 import { makeQueryHash } from '../utils/queryHash';
+import { 
+  estimateGenerateLimiter, 
+  estimateGenerateIpLimiter, 
+  estimateSelectionLimiter 
+} from '../utils/rateLimiter';
 
 // Compute requestHash for audit/debug
 function computeRequestHash(jobText: string): string {
@@ -71,12 +76,43 @@ const estimatesRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post('/generate', {
     preHandler: [fastify.requireAuth],
   }, async (request, reply) => {
+    // Rate limiting: check by userId first, fallback to IP
+    const userId = request.user?.sub;
+    const clientIp = request.ip;
+    
+    if (userId) {
+      const userLimit = estimateGenerateLimiter.check(userId);
+      if (!userLimit.allowed) {
+        reply.code(429);
+        return { 
+          error: 'rate_limited', 
+          message: 'Too many estimate requests. Please wait before trying again.',
+          retryAfterSeconds: userLimit.retryAfterSeconds 
+        };
+      }
+    } else {
+      const ipLimit = estimateGenerateIpLimiter.check(clientIp);
+      if (!ipLimit.allowed) {
+        reply.code(429);
+        return { 
+          error: 'rate_limited', 
+          message: 'Too many estimate requests. Please wait before trying again.',
+          retryAfterSeconds: ipLimit.retryAfterSeconds 
+        };
+      }
+    }
+
     const result = generateEstimateSchema.safeParse(request.body);
     if (!result.success) {
       return badRequest(reply, 'Invalid request body', result.error.flatten());
     }
 
     const { jobText, laborRateCents = DEFAULT_LABOR_RATE_CENTS } = result.data;
+
+    // Input guardrail: reject jobText > 2000 characters
+    if (jobText.length > 2000) {
+      return badRequest(reply, 'jobText exceeds maximum length of 2000 characters');
+    }
     
     // Compute requestHash for audit
     const requestHash = computeRequestHash(jobText);
@@ -390,6 +426,18 @@ Be specific with search terms - include brand names if mentioned. For heater iss
   fastify.post('/selection', {
     preHandler: [fastify.requireAuth],
   }, async (request, reply) => {
+    // Rate limiting by userId
+    const userId = request.user.sub;
+    const selectionLimit = estimateSelectionLimiter.check(userId);
+    if (!selectionLimit.allowed) {
+      reply.code(429);
+      return { 
+        error: 'rate_limited', 
+        message: 'Too many selection requests. Please wait before trying again.',
+        retryAfterSeconds: selectionLimit.retryAfterSeconds 
+      };
+    }
+
     const schema = z.object({
       jobText: z.string().min(1).optional(),
       query: z.string().min(1).optional(),
@@ -404,7 +452,6 @@ Be specific with search terms - include brand names if mentioned. For heater iss
     }
 
     const { jobText, query, category, productId, requestHash } = result.data;
-    const userId = request.user.sub;
 
     // Must provide either query or jobText
     if (!query && !jobText) {

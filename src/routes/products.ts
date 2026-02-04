@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { badRequest, conflict } from '../utils/errors';
 import { makeQueryHash } from '../utils/queryHash';
+import { productSearchLimiter } from '../utils/rateLimiter';
 
 const createProductSchema = z.object({
   sku: z.string().min(1),
@@ -14,9 +15,21 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /api/products/search
   fastify.get('/search', {
     preHandler: [fastify.requireAuth],
-  }, async (request) => {
-    const query = request.query as { q?: string; category?: string };
+  }, async (request, reply) => {
     const userId = request.user.sub;
+    
+    // Rate limiting by userId
+    const searchLimit = productSearchLimiter.check(userId);
+    if (!searchLimit.allowed) {
+      reply.code(429);
+      return { 
+        error: 'rate_limited', 
+        message: 'Too many search requests. Please wait before trying again.',
+        retryAfterSeconds: searchLimit.retryAfterSeconds 
+      };
+    }
+
+    const query = request.query as { q?: string; category?: string };
     
     // Compute queryHash for learning lookup using standardized method
     const queryHash = makeQueryHash(query.q || '', query.category);
