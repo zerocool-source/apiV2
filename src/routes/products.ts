@@ -1,7 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { createHash } from 'crypto';
 import { badRequest, conflict } from '../utils/errors';
+import { makeQueryHash } from '../utils/queryHash';
 
 const createProductSchema = z.object({
   sku: z.string().min(1),
@@ -18,9 +18,8 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
     const query = request.query as { q?: string; category?: string };
     const userId = request.user.sub;
     
-    // Compute queryHash for learning lookup
-    const hashInput = `${query.q || ''}|${query.category || ''}`;
-    const queryHash = createHash('sha256').update(hashInput).digest('hex');
+    // Compute queryHash for learning lookup using standardized method
+    const queryHash = makeQueryHash(query.q || '', query.category);
     
     // Get user's past selections for this query
     const pastSelections = await fastify.prisma.techSelection.findMany({

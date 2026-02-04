@@ -1,7 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { createHash } from 'crypto';
 import { badRequest, notFound } from '../utils/errors';
+import { makeQueryHash } from '../utils/queryHash';
 
 const createEstimateSchema = z.object({
   jobId: z.string().uuid(),
@@ -130,9 +130,8 @@ const estimatesRoutes: FastifyPluginAsync = async (fastify) => {
       return notFound(reply, 'Product not found');
     }
 
-    // Compute queryHash: sha256(jobText + '|' + (category||''))
-    const hashInput = `${jobText}|${category || ''}`;
-    const queryHash = createHash('sha256').update(hashInput).digest('hex');
+    // Compute queryHash using standardized method
+    const queryHash = makeQueryHash(jobText, category);
 
     await fastify.prisma.techSelection.create({
       data: {
