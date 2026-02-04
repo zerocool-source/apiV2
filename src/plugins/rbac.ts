@@ -1,7 +1,7 @@
 import { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
 import fp from 'fastify-plugin';
 
-type Role = 'tech' | 'supervisor' | 'repair' | 'admin';
+type Role = 'tech' | 'supervisor' | 'repair' | 'admin' | 'foreman';
 
 declare module 'fastify' {
   interface FastifyInstance {

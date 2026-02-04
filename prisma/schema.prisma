@@ -73,7 +73,6 @@ model Property {
   propertyChannels   PropertyChannel[]
   repairRequests     RepairRequest[]
   serviceRepairs     ServiceRepair[]
-  // techOpsEntries relation removed - propertyId in TechOpsEntry is just a string
   technicianStatuses TechnicianStatus[]
   uploads            Upload[]
 }
@@ -301,11 +300,11 @@ model Product {
   sku            String   @unique
   name           String
   category       String?
-  unitPriceCents Int      @default(0)
   active         Boolean  @default(true)
-  sourceRecordId String?
   createdAt      DateTime @default(now())
+  unitPriceCents Int      @default(0)
   updatedAt      DateTime @updatedAt
+  sourceRecordId String?
 }
 
 model TechSelection {
@@ -397,7 +396,6 @@ model TechOpsEntry {
   convertedAt           DateTime?
   createdAt             DateTime           @default(now())
   updatedAt             DateTime           @updatedAt
-  // property relation removed - propertyId is just a string, not a FK
   reviewer              User?              @relation("TechOpsReviewer", fields: [reviewedBy], references: [id])
   technician            User?              @relation("TechOpsCreator", fields: [technicianId], references: [id])
 }
@@ -538,6 +536,7 @@ model customers {
   repairs_budget_period   String?   @default("monthly")
   created_at              DateTime? @default(now()) @db.Timestamp(6)
   updated_at              DateTime? @default(now()) @db.Timestamp(6)
+  zone_id                 String?   @db.VarChar
 }
 
 model emergencies {
@@ -735,6 +734,10 @@ model estimates {
   archived_by_user_name          String?
   archived_reason                String?
   source_service_repair_ids      String[]
+  complete_by_deadline           DateTime? @db.Timestamp(6)
+  deadline_hours                 Int?
+  auto_returned_at               DateTime? @db.Timestamp(6)
+  auto_returned_reason           String?
 }
 
 model field_entries {
@@ -1123,11 +1126,11 @@ model service_tasks {
 }
 
 model sessions {
-  sid    String   @id @db.VarChar
-  sess   Json     @db.Json
-  expire DateTime @db.Timestamp(6)
-
-  @@index([expire])
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar(36)
+  user_id    String   @db.VarChar(36)
+  token      String   @unique
+  expires_at DateTime @db.Timestamp(6)
+  created_at DateTime @default(now()) @db.Timestamp(6)
 }
 
 model settings {
@@ -1196,6 +1199,7 @@ model technicians {
   region             String?
   truck_number       String?
   commission_percent Int?      @default(0)
+  route_locked       Boolean?  @default(false)
 }
 
 model thread_messages {
@@ -1251,15 +1255,19 @@ model unscheduled_stops {
 }
 
 model users {
-  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
-  email      String    @unique @db.VarChar
-  password   String    @db.VarChar
-  first_name String?   @db.VarChar
-  last_name  String?   @db.VarChar
-  role       String?   @default("admin") @db.VarChar
-  is_active  Boolean?  @default(true)
-  created_at DateTime? @default(now()) @db.Timestamp(6)
-  updated_at DateTime? @default(now()) @db.Timestamp(6)
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  email         String    @unique @db.VarChar
+  password      String    @db.VarChar
+  first_name    String?   @db.VarChar
+  last_name     String?   @db.VarChar
+  role          String?   @default("admin") @db.VarChar
+  is_active     Boolean?  @default(true)
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+  updated_at    DateTime? @default(now()) @db.Timestamp(6)
+  phone         String?   @db.VarChar(50)
+  county        String?   @db.VarChar(100)
+  supervisor_id String?   @db.VarChar(36)
+  hourly_rate   Decimal?  @default(60.00) @db.Decimal(8, 2)
 }
 
 model workflows {
@@ -1270,6 +1278,27 @@ model workflows {
   status     String    @default("active")
   executions Int?      @default(0)
   created_at DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model ai_query_mappings {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar(36)
+  user_id            String   @db.VarChar(36)
+  query_term         String
+  mapped_product_sku String   @db.VarChar(100)
+  success_count      Int?     @default(0)
+  total_count        Int?     @default(0)
+  created_at         DateTime @default(now()) @db.Timestamp(6)
+  updated_at         DateTime @default(now()) @db.Timestamp(6)
+
+  @@unique([user_id, query_term, mapped_product_sku])
+}
+
+model session {
+  sid    String   @id @db.VarChar
+  sess   Json     @db.Json
+  expire DateTime @db.Timestamp(6)
+
+  @@index([expire], map: "IDX_session_expire")
 }
 
 enum Role {

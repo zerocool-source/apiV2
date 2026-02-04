@@ -37,6 +37,8 @@ import serviceRepairsRoutes from './routes/service-repairs';
 import chemicalOrdersRoutes from './routes/chemical-orders';
 import techOpsRoutes from './routes/tech-ops';
 import usersRoutes from './routes/users';
+import techAuthRoutes from './routes/tech-auth';
+import repairRequestsRoutes from './routes/repair-requests';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const fastify = Fastify({
@@ -97,6 +99,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(chemicalOrdersRoutes, { prefix: '/api/chemical-orders' });
   await fastify.register(techOpsRoutes, { prefix: '/api/tech-ops' });
   await fastify.register(usersRoutes, { prefix: '/api/users' });
+  await fastify.register(techAuthRoutes, { prefix: '/api/tech' });
+  await fastify.register(repairRequestsRoutes, { prefix: '/api/repair-requests' });
 
   // Global error handler
   fastify.setErrorHandler((error: Error & { validation?: unknown; statusCode?: number }, request, reply) => {
