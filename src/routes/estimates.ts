@@ -178,16 +178,25 @@ Be specific with search terms - include brand names if mentioned. For heater iss
       const modelName = 'gpt-4o-mini';
       debugModel = modelName;
       
-      const completion = await openai.chat.completions.create({
-        model: modelName,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: jobText },
-        ],
-        response_format: { type: 'json_object' },
-        max_tokens: 1000,
-        temperature: 0.3,
-      });
+      // Create abort controller for 12-second timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+      
+      let completion;
+      try {
+        completion = await openai.chat.completions.create({
+          model: modelName,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: jobText },
+          ],
+          response_format: { type: 'json_object' },
+          max_tokens: 1000,
+          temperature: 0.3,
+        }, { signal: controller.signal });
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       const responseText = completion.choices[0]?.message?.content || '{}';
       const parsed = JSON.parse(responseText);
@@ -415,9 +424,15 @@ Be specific with search terms - include brand names if mentioned. For heater iss
 
         return response;
       }
-    } catch (error) {
-      fastify.log.error({ error }, 'OpenAI API error');
-      assumptions.push('AI service unavailable - using fallback estimate');
+    } catch (error: any) {
+      // Check if it's a timeout/abort error
+      if (error?.name === 'AbortError' || error?.code === 'ABORT_ERR') {
+        fastify.log.warn({ error }, 'OpenAI API timeout');
+        assumptions.push('AI timeout, manual review required');
+      } else {
+        fastify.log.error({ error }, 'OpenAI API error');
+        assumptions.push('AI service unavailable - using fallback estimate');
+      }
     }
 
     // Fallback: basic labor-only estimate
