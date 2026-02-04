@@ -122,6 +122,14 @@ const estimatesRoutes: FastifyPluginAsync = async (fastify) => {
     const { jobText, category, productId } = result.data;
     const userId = request.user.sub;
 
+    // Verify product exists
+    const product = await fastify.prisma.product.findUnique({
+      where: { id: productId },
+    });
+    if (!product) {
+      return notFound(reply, 'Product not found');
+    }
+
     // Compute queryHash: sha256(jobText + '|' + (category||''))
     const hashInput = `${jobText}|${category || ''}`;
     const queryHash = createHash('sha256').update(hashInput).digest('hex');
@@ -135,7 +143,7 @@ const estimatesRoutes: FastifyPluginAsync = async (fastify) => {
       },
     });
 
-    return { ok: true };
+    return { ok: true, queryHash };
   });
 
   // GET /api/estimates
