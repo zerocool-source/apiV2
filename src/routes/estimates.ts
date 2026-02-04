@@ -422,13 +422,30 @@ Be specific with search terms - include brand names if mentioned. For heater iss
             debugUnmatchedCandidates.push({
               query: item.description,
               qty: item.quantity,
-              candidates: scoredCandidates.map(c => ({
-                productId: c.product.id,
-                sku: c.product.sku,
-                name: c.product.name,
-                unitPriceCents: c.product.unitPriceCents,
-                matchScore: c.score,
-              })),
+              candidates: scoredCandidates.map(c => {
+                // Determine confidence label and note based on matchScore
+                let confidenceLabel: 'low' | 'maybe' | 'good';
+                let confidenceNote: string;
+                if (c.score >= 12) {
+                  confidenceLabel = 'good';
+                  confidenceNote = 'Strong match. Likely correct.';
+                } else if (c.score >= 7) {
+                  confidenceLabel = 'maybe';
+                  confidenceNote = 'Possible match. Confirm model/brand.';
+                } else {
+                  confidenceLabel = 'low';
+                  confidenceNote = 'Weak match. Verify part manually.';
+                }
+                return {
+                  productId: c.product.id,
+                  sku: c.product.sku,
+                  name: c.product.name,
+                  unitPriceCents: c.product.unitPriceCents,
+                  matchScore: c.score,
+                  confidenceLabel,
+                  confidenceNote,
+                };
+              }),
             });
           }
         }
