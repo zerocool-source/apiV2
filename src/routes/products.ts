@@ -10,6 +10,41 @@ const createProductSchema = z.object({
 });
 
 const productsRoutes: FastifyPluginAsync = async (fastify) => {
+  // GET /api/products/search
+  fastify.get('/search', {
+    preHandler: [fastify.requireAuth],
+  }, async (request) => {
+    const query = request.query as { q?: string; category?: string };
+    
+    const where: any = { active: true };
+    
+    if (query.q) {
+      where.OR = [
+        { name: { contains: query.q, mode: 'insensitive' } },
+        { sku: { contains: query.q, mode: 'insensitive' } },
+      ];
+    }
+    
+    if (query.category) {
+      where.category = query.category;
+    }
+
+    const products = await fastify.prisma.product.findMany({
+      where,
+      select: {
+        sku: true,
+        name: true,
+        category: true,
+        unitPriceCents: true,
+        active: true,
+      },
+      orderBy: { name: 'asc' },
+      take: 50,
+    });
+
+    return products;
+  });
+
   // GET /api/products
   fastify.get('/', {
     preHandler: [fastify.requireAuth],
