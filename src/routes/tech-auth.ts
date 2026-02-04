@@ -4,8 +4,11 @@ import { verifyPassword } from '../utils/password';
 import { badRequest, unauthorized, notFound } from '../utils/errors';
 
 const techLoginSchema = z.object({
-  identifier: z.string().min(1),
+  email: z.string().optional(),
+  identifier: z.string().optional(),
   password: z.string().min(1),
+}).refine(data => data.email || data.identifier, {
+  message: 'Either email or identifier is required',
 });
 
 const techAuthRoutes: FastifyPluginAsync = async (fastify) => {
@@ -14,13 +17,14 @@ const techAuthRoutes: FastifyPluginAsync = async (fastify) => {
     schema: {
       tags: ['Tech Auth'],
       summary: 'Technician login',
-      description: 'Authenticate a technician using email or phone number and password.',
+      description: 'Authenticate a technician using email or phone number and password. Accepts either { email, password } or { identifier, password }.',
       security: [],
       body: {
         type: 'object',
-        required: ['identifier', 'password'],
+        required: ['password'],
         properties: {
-          identifier: { type: 'string', description: 'Email or phone number' },
+          email: { type: 'string', description: 'Email address (alternative to identifier)' },
+          identifier: { type: 'string', description: 'Email or phone number (alternative to email)' },
           password: { type: 'string' },
         },
       },
@@ -32,12 +36,10 @@ const techAuthRoutes: FastifyPluginAsync = async (fastify) => {
               type: 'object',
               properties: {
                 id: { type: 'string' },
-                userId: { type: 'string' },
                 name: { type: 'string' },
                 email: { type: 'string' },
                 phone: { type: 'string' },
                 role: { type: 'string' },
-                region: { type: 'string' },
               },
             },
             token: { type: 'string' },
@@ -53,14 +55,15 @@ const techAuthRoutes: FastifyPluginAsync = async (fastify) => {
       return badRequest(reply, 'Invalid request body', result.error.flatten());
     }
 
-    const { identifier, password } = result.data;
+    const { email, identifier, password } = result.data;
+    const loginIdentifier = email || identifier;
 
     // Find technician by email or phone
     const techProfile = await fastify.prisma.technicianProfile.findFirst({
       where: {
         OR: [
-          { user: { email: identifier } },
-          { phone: identifier },
+          { user: { email: loginIdentifier } },
+          { phone: loginIdentifier },
         ],
       },
       include: {
@@ -72,7 +75,7 @@ const techAuthRoutes: FastifyPluginAsync = async (fastify) => {
       return unauthorized(reply, 'Invalid credentials');
     }
 
-    // Check password using user's passwordHash (techProfile.passwordHash available after db:push)
+    // Check password using user's passwordHash
     const validPassword = await verifyPassword(password, techProfile.user.passwordHash);
 
     if (!validPassword) {
@@ -87,12 +90,10 @@ const techAuthRoutes: FastifyPluginAsync = async (fastify) => {
     return {
       technician: {
         id: techProfile.id,
-        userId: techProfile.userId,
         name: techProfile.name,
         email: techProfile.user.email,
-        phone: techProfile.phone,
+        phone: techProfile.phone || '',
         role: techProfile.user.role,
-        region: techProfile.region,
       },
       token,
     };
