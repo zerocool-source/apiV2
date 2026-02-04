@@ -41,6 +41,7 @@ model TechnicianProfile {
   userId       String   @unique
   name         String
   phone        String?
+  passwordHash String?
   truckId      String?
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
@@ -1276,6 +1277,7 @@ enum Role {
   supervisor
   repair
   admin
+  foreman
 }
 
 enum AssignmentStatus {
@@ -1331,6 +1333,7 @@ enum TechOpsEntryType {
   equipment_failure
   safety_concern
   general_note
+  repair_request
 }
 
 enum TechOpsPriority {
