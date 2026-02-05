@@ -1275,6 +1275,7 @@ enum Role {
   supervisor
   repair
   admin
+  foreman
 }
 
 enum AssignmentStatus {
