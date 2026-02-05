@@ -1331,6 +1331,7 @@ enum TechOpsEntryType {
   equipment_failure
   safety_concern
   general_note
+  repair_request
 }
 
 enum TechOpsPriority {
