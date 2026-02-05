@@ -274,14 +274,34 @@ model Job {
   id               String      @id @default(uuid())
   type             JobType
   propertyId       String
-  assignedToUserId String
+  assignedToUserId String?
   status           JobStatus   @default(pending)
+  scheduledDate    DateTime?
+  acceptedAt       DateTime?
+  dismissedAt      DateTime?
+  dismissedReason  String?
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
   estimates        Estimate[]
-  assignedTo       User        @relation(fields: [assignedToUserId], references: [id], onDelete: Cascade)
+  assignedTo       User?       @relation(fields: [assignedToUserId], references: [id], onDelete: Cascade)
   property         Property    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   timeEntries      TimeEntry[]
+}
+
+model UrgentNotification {
+  id                String    @id @default(uuid())
+  title             String
+  message           String
+  severity          String    @default("info")
+  targetRole        String?
+  targetUserId      String?
+  relatedEntityType String?
+  relatedEntityId   String?
+  isDismissed       Boolean   @default(false)
+  dismissedAt       DateTime?
+  dismissedByUserId String?
+  expiresAt         DateTime?
+  createdAt         DateTime  @default(now())
 }
 
 model Estimate {
