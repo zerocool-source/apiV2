@@ -1,60 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { badRequest, notFound, forbidden } from '../utils/errors';
-
-const dismissJobSchema = z.object({
-  reason: z.string().optional(),
-});
-
-async function notifyAdminsOfJobAction(
-  prisma: any,
-  action: 'accepted' | 'dismissed',
-  jobId: string,
-  jobType: string,
-  propertyName: string,
-  technicianName: string,
-  technicianId: string,
-  reason?: string
-) {
-  const adminsAndSupervisors = await prisma.user.findMany({
-    where: {
-      role: { in: ['admin', 'supervisor'] },
-    },
-    select: { id: true },
-  });
-
-  const title = action === 'accepted' 
-    ? `Job Accepted: ${jobType}`
-    : `Job Dismissed: ${jobType}`;
-
-  const message = action === 'accepted'
-    ? `${technicianName} has accepted the ${jobType} job at ${propertyName}.`
-    : `${technicianName} has dismissed the ${jobType} job at ${propertyName}.${reason ? ` Reason: ${reason}` : ''} This job needs to be reassigned.`;
-
-  const alert = await prisma.alert.create({
-    data: {
-      createdBy: technicianId,
-      title,
-      message,
-      severity: action === 'dismissed' ? 'warning' : 'info',
-      audience: ['admin', 'supervisor'],
-    },
-  });
-
-  const messagePromises = adminsAndSupervisors.map((user: { id: string }) =>
-    prisma.message.create({
-      data: {
-        fromUserId: technicianId,
-        toUserId: user.id,
-        text: message,
-      },
-    })
-  );
-
-  await Promise.all(messagePromises);
-
-  return alert;
-}
+import { badRequest, notFound } from '../utils/errors';
 
 const createJobSchema = z.object({
   type: z.enum(['repair', 'maintenance', 'inspection']),
@@ -76,7 +22,7 @@ const jobsRoutes: FastifyPluginAsync = async (fastify) => {
     const user = request.user;
 
     const where: any = {};
-    
+
     // Repair techs can only see their own jobs
     if (user.role === 'repair') {
       where.assignedToUserId = user.sub;
@@ -109,6 +55,72 @@ const jobsRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     return jobs;
+  });
+
+  // GET /api/jobs/team - For foremen/supervisors to see their team's jobs
+  fastify.get('/team', {
+    preHandler: [fastify.requireAuth],
+  }, async (request) => {
+    const query = request.query as { type?: string; status?: string; startDate?: string; endDate?: string };
+    const user = request.user;
+
+    // Only supervisors, foremen, and admins can see team jobs
+    if (!['supervisor', 'repair', 'admin'].includes(user.role)) {
+      return [];
+    }
+
+    // Get team members supervised by this user
+    const teamMembers = await fastify.prisma.technicianProfile.findMany({
+      where: { supervisorId: user.sub },
+      select: { userId: true, name: true },
+    });
+
+    const teamUserIds = teamMembers.map(t => t.userId).filter(Boolean) as string[];
+    teamUserIds.push(user.sub); // Include self
+
+    const where: any = {
+      assignedToUserId: { in: teamUserIds },
+    };
+
+    if (query.type) {
+      where.type = query.type;
+    }
+    if (query.status) {
+      where.status = query.status;
+    }
+    if (query.startDate && query.endDate) {
+      where.scheduledDate = {
+        gte: new Date(query.startDate),
+        lte: new Date(query.endDate),
+      };
+    }
+
+    const jobs = await fastify.prisma.job.findMany({
+      where,
+      include: {
+        property: {
+          select: { id: true, name: true, address: true },
+        },
+        assignedTo: {
+          select: {
+            id: true,
+            email: true,
+            technicianProfile: {
+              select: { name: true, phone: true },
+            },
+          },
+        },
+      },
+      orderBy: { scheduledDate: 'asc' },
+    });
+
+    // Format response with tech names
+    return jobs.map(job => ({
+      ...job,
+      assignedTechName: job.assignedTo?.technicianProfile?.name || 'Unassigned',
+      propertyName: job.property?.name || 'Unknown Property',
+      propertyAddress: job.property?.address || '',
+    }));
   });
 
   // GET /api/jobs/:id
@@ -217,46 +229,17 @@ const jobsRoutes: FastifyPluginAsync = async (fastify) => {
     return job;
   });
 
-  // PATCH /api/jobs/:id/accept
+  // PATCH /api/jobs/:id/accept - Tech accepts a job
   fastify.patch('/:id/accept', {
     preHandler: [fastify.requireAuth],
-    schema: {
-      tags: ['Jobs'],
-      summary: 'Accept a job',
-      description: 'Technician accepts a pending job, changing status to in_progress.',
-      params: {
-        type: 'object',
-        required: ['id'],
-        properties: {
-          id: { type: 'string', format: 'uuid' },
-        },
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            id: { type: 'string' },
-            type: { type: 'string' },
-            status: { type: 'string' },
-            acceptedAt: { type: 'string' },
-            propertyId: { type: 'string' },
-            assignedToUserId: { type: 'string' },
-          },
-        },
-        400: { $ref: 'Error#' },
-        401: { $ref: 'Error#' },
-        403: { $ref: 'Error#' },
-        404: { $ref: 'Error#' },
-      },
-    },
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const userId = request.user.sub;
+    const user = request.user;
 
     const job = await fastify.prisma.job.findUnique({
       where: { id },
       include: {
-        property: true,
+        property: { select: { name: true, address: true } },
       },
     });
 
@@ -264,97 +247,71 @@ const jobsRoutes: FastifyPluginAsync = async (fastify) => {
       return notFound(reply, 'Job not found');
     }
 
-    if (job.assignedToUserId !== userId) {
-      return forbidden(reply, 'You are not assigned to this job');
+    // Check if job is assigned to this tech
+    if (job.assignedToUserId !== user.sub) {
+      return badRequest(reply, 'You can only accept jobs assigned to you');
     }
 
-    if (job.status !== 'pending') {
-      return badRequest(reply, `Job cannot be accepted. Current status: ${job.status}`);
+    // Check if job is in pending/assigned status
+    if (!['pending', 'assigned'].includes(job.status)) {
+      return badRequest(reply, `Cannot accept job with status: ${job.status}`);
     }
 
-    const techProfile = await fastify.prisma.technicianProfile.findFirst({
-      where: { userId },
-      select: { name: true },
-    });
-
+    // Update job status
     const updatedJob = await fastify.prisma.job.update({
       where: { id },
       data: {
         status: 'in_progress',
         acceptedAt: new Date(),
       },
+      include: {
+        property: { select: { name: true, address: true } },
+      },
     });
 
-    await notifyAdminsOfJobAction(
-      fastify.prisma,
-      'accepted',
-      job.id,
-      job.type,
-      job.property.name,
-      techProfile?.name || 'Unknown Technician',
-      userId
-    );
+    // Get tech name for notification
+    const techProfile = await fastify.prisma.technicianProfile.findUnique({
+      where: { userId: user.sub },
+      select: { name: true },
+    });
+    const techName = techProfile?.name || 'Technician';
 
-    return {
-      id: updatedJob.id,
-      type: updatedJob.type,
-      status: updatedJob.status,
-      acceptedAt: updatedJob.acceptedAt?.toISOString(),
-      propertyId: updatedJob.propertyId,
-      assignedToUserId: updatedJob.assignedToUserId,
-    };
+    // Notify admins
+    try {
+      const admins = await fastify.prisma.user.findMany({
+        where: { role: { in: ['admin', 'supervisor'] } },
+        select: { id: true },
+      });
+
+      await fastify.prisma.urgentNotification.create({
+        data: {
+          title: 'Job Accepted',
+          message: `${techName} accepted job at ${job.property?.name || 'property'}`,
+          severity: 'info',
+          targetRole: 'admin',
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        },
+      });
+      console.log(`[NOTIFICATION] Job ${id} accepted by ${techName}`);
+    } catch (notifError) {
+      console.error('Failed to create admin notification:', notifError);
+    }
+
+    return { success: true, message: 'Job accepted', job: updatedJob };
   });
 
-  // PATCH /api/jobs/:id/dismiss
+  // PATCH /api/jobs/:id/dismiss - Tech dismisses a job
   fastify.patch('/:id/dismiss', {
     preHandler: [fastify.requireAuth],
-    schema: {
-      tags: ['Jobs'],
-      summary: 'Dismiss a job',
-      description: 'Technician dismisses a job, unassigning themselves so it can be reassigned.',
-      params: {
-        type: 'object',
-        required: ['id'],
-        properties: {
-          id: { type: 'string', format: 'uuid' },
-        },
-      },
-      body: {
-        type: 'object',
-        properties: {
-          reason: { type: 'string', description: 'Optional reason for dismissing the job' },
-        },
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            id: { type: 'string' },
-            type: { type: 'string' },
-            status: { type: 'string' },
-            dismissedAt: { type: 'string' },
-            dismissedReason: { type: 'string' },
-            propertyId: { type: 'string' },
-            assignedToUserId: { type: 'string', nullable: true },
-          },
-        },
-        400: { $ref: 'Error#' },
-        401: { $ref: 'Error#' },
-        403: { $ref: 'Error#' },
-        404: { $ref: 'Error#' },
-      },
-    },
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const userId = request.user.sub;
-
-    const body = dismissJobSchema.safeParse(request.body);
-    const reason = body.success ? body.data.reason : undefined;
+    const { reason } = request.body as { reason?: string };
+    const user = request.user;
 
     const job = await fastify.prisma.job.findUnique({
       where: { id },
       include: {
-        property: true,
+        property: { select: { name: true, address: true } },
       },
     });
 
@@ -362,45 +319,54 @@ const jobsRoutes: FastifyPluginAsync = async (fastify) => {
       return notFound(reply, 'Job not found');
     }
 
-    if (job.assignedToUserId !== userId) {
-      return forbidden(reply, 'You are not assigned to this job');
+    // Check if job is assigned to this tech
+    if (job.assignedToUserId !== user.sub) {
+      return badRequest(reply, 'You can only dismiss jobs assigned to you');
     }
 
-    const techProfile = await fastify.prisma.technicianProfile.findFirst({
-      where: { userId },
-      select: { name: true },
-    });
+    // Check if job can be dismissed
+    if (!['pending', 'assigned'].includes(job.status)) {
+      return badRequest(reply, `Cannot dismiss job with status: ${job.status}`);
+    }
 
+    // Update job - unassign so it can be reassigned
     const updatedJob = await fastify.prisma.job.update({
       where: { id },
       data: {
+        status: 'pending',
         assignedToUserId: null,
         dismissedAt: new Date(),
-        dismissedReason: reason,
-        status: 'pending',
+        dismissedReason: reason || 'No reason provided',
+      },
+      include: {
+        property: { select: { name: true, address: true } },
       },
     });
 
-    await notifyAdminsOfJobAction(
-      fastify.prisma,
-      'dismissed',
-      job.id,
-      job.type,
-      job.property.name,
-      techProfile?.name || 'Unknown Technician',
-      userId,
-      reason
-    );
+    // Get tech name
+    const techProfile = await fastify.prisma.technicianProfile.findUnique({
+      where: { userId: user.sub },
+      select: { name: true },
+    });
+    const techName = techProfile?.name || 'Technician';
 
-    return {
-      id: updatedJob.id,
-      type: updatedJob.type,
-      status: updatedJob.status,
-      dismissedAt: updatedJob.dismissedAt?.toISOString(),
-      dismissedReason: updatedJob.dismissedReason,
-      propertyId: updatedJob.propertyId,
-      assignedToUserId: updatedJob.assignedToUserId,
-    };
+    // Notify admins - they need to reassign
+    try {
+      await fastify.prisma.urgentNotification.create({
+        data: {
+          title: 'Job Dismissed',
+          message: `${techName} dismissed job at ${job.property?.name || 'property'}. Reason: ${reason || 'Not specified'}. Needs reassignment.`,
+          severity: 'warning',
+          targetRole: 'admin',
+          expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
+        },
+      });
+      console.log(`[NOTIFICATION] Job ${id} dismissed by ${techName}`);
+    } catch (notifError) {
+      console.error('Failed to create admin notification:', notifError);
+    }
+
+    return { success: true, message: 'Job dismissed. Admins notified for reassignment.', job: updatedJob };
   });
 };
 

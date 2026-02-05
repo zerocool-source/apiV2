@@ -41,7 +41,6 @@ model TechnicianProfile {
   userId       String   @unique
   name         String
   phone        String?
-  passwordHash String?
   truckId      String?
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
@@ -73,6 +72,7 @@ model Property {
   propertyChannels   PropertyChannel[]
   repairRequests     RepairRequest[]
   serviceRepairs     ServiceRepair[]
+  // techOpsEntries relation removed - propertyId in TechOpsEntry is just a string
   technicianStatuses TechnicianStatus[]
   uploads            Upload[]
 }
@@ -276,6 +276,7 @@ model Job {
   propertyId       String
   assignedToUserId String?
   status           JobStatus   @default(pending)
+  scheduledDate    DateTime?
   acceptedAt       DateTime?
   dismissedAt      DateTime?
   dismissedReason  String?
@@ -285,6 +286,22 @@ model Job {
   assignedTo       User?       @relation(fields: [assignedToUserId], references: [id], onDelete: Cascade)
   property         Property    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   timeEntries      TimeEntry[]
+}
+
+model UrgentNotification {
+  id                String    @id @default(uuid())
+  title             String
+  message           String
+  severity          String    @default("info")
+  targetRole        String?
+  targetUserId      String?
+  relatedEntityType String?
+  relatedEntityId   String?
+  isDismissed       Boolean   @default(false)
+  dismissedAt       DateTime?
+  dismissedByUserId String?
+  expiresAt         DateTime?
+  createdAt         DateTime  @default(now())
 }
 
 model Estimate {
@@ -299,27 +316,11 @@ model Estimate {
 }
 
 model Product {
-  id             String   @id @default(uuid())
-  sku            String   @unique
-  name           String
-  category       String?
-  active         Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  unitPriceCents Int      @default(0)
-  updatedAt      DateTime @updatedAt
-  sourceRecordId String?
-}
-
-model TechSelection {
-  id        String   @id @default(uuid())
-  userId    String
-  queryHash String
-  category  String?
-  productId String
-  chosenAt  DateTime @default(now())
-
-  @@index([userId, queryHash])
-  @@index([productId])
+  id       String  @id @default(uuid())
+  sku      String  @unique
+  name     String
+  category String?
+  price    Float?  @default(0)
 }
 
 model TimeEntry {
@@ -399,6 +400,7 @@ model TechOpsEntry {
   convertedAt           DateTime?
   createdAt             DateTime           @default(now())
   updatedAt             DateTime           @updatedAt
+  // property relation removed - propertyId is just a string, not a FK
   reviewer              User?              @relation("TechOpsReviewer", fields: [reviewedBy], references: [id])
   technician            User?              @relation("TechOpsCreator", fields: [technicianId], references: [id])
 }
@@ -539,7 +541,6 @@ model customers {
   repairs_budget_period   String?   @default("monthly")
   created_at              DateTime? @default(now()) @db.Timestamp(6)
   updated_at              DateTime? @default(now()) @db.Timestamp(6)
-  zone_id                 String?   @db.VarChar
 }
 
 model emergencies {
@@ -737,10 +738,6 @@ model estimates {
   archived_by_user_name          String?
   archived_reason                String?
   source_service_repair_ids      String[]
-  complete_by_deadline           DateTime? @db.Timestamp(6)
-  deadline_hours                 Int?
-  auto_returned_at               DateTime? @db.Timestamp(6)
-  auto_returned_reason           String?
 }
 
 model field_entries {
@@ -1128,13 +1125,8 @@ model service_tasks {
   created_at        DateTime? @default(now()) @db.Timestamp(6)
 }
 
-model sessions {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar(36)
-  user_id    String   @db.VarChar(36)
-  token      String   @unique
-  expires_at DateTime @db.Timestamp(6)
-  created_at DateTime @default(now()) @db.Timestamp(6)
-}
+// NOTE: The "sessions" table exists in the database but is managed by
+// express-session/connect-pg-simple, NOT by Prisma. Do not add it here.
 
 model settings {
   id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
@@ -1202,7 +1194,6 @@ model technicians {
   region             String?
   truck_number       String?
   commission_percent Int?      @default(0)
-  route_locked       Boolean?  @default(false)
 }
 
 model thread_messages {
@@ -1258,19 +1249,15 @@ model unscheduled_stops {
 }
 
 model users {
-  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
-  email         String    @unique @db.VarChar
-  password      String    @db.VarChar
-  first_name    String?   @db.VarChar
-  last_name     String?   @db.VarChar
-  role          String?   @default("admin") @db.VarChar
-  is_active     Boolean?  @default(true)
-  created_at    DateTime? @default(now()) @db.Timestamp(6)
-  updated_at    DateTime? @default(now()) @db.Timestamp(6)
-  phone         String?   @db.VarChar(50)
-  county        String?   @db.VarChar(100)
-  supervisor_id String?   @db.VarChar(36)
-  hourly_rate   Decimal?  @default(60.00) @db.Decimal(8, 2)
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
+  email      String    @unique @db.VarChar
+  password   String    @db.VarChar
+  first_name String?   @db.VarChar
+  last_name  String?   @db.VarChar
+  role       String?   @default("admin") @db.VarChar
+  is_active  Boolean?  @default(true)
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+  updated_at DateTime? @default(now()) @db.Timestamp(6)
 }
 
 model workflows {
@@ -1281,27 +1268,6 @@ model workflows {
   status     String    @default("active")
   executions Int?      @default(0)
   created_at DateTime? @default(now()) @db.Timestamp(6)
-}
-
-model ai_query_mappings {
-  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar(36)
-  user_id            String   @db.VarChar(36)
-  query_term         String
-  mapped_product_sku String   @db.VarChar(100)
-  success_count      Int?     @default(0)
-  total_count        Int?     @default(0)
-  created_at         DateTime @default(now()) @db.Timestamp(6)
-  updated_at         DateTime @default(now()) @db.Timestamp(6)
-
-  @@unique([user_id, query_term, mapped_product_sku])
-}
-
-model session {
-  sid    String   @id @db.VarChar
-  sess   Json     @db.Json
-  expire DateTime @db.Timestamp(6)
-
-  @@index([expire], map: "IDX_session_expire")
 }
 
 enum Role {
