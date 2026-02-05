@@ -1125,16 +1125,8 @@ model service_tasks {
   created_at        DateTime? @default(now()) @db.Timestamp(6)
 }
 
-/// This table is managed by express-session/connect-pg-simple, not Prisma
-/// Using @@ignore to prevent Prisma from trying to modify it
-model sessions {
-  sid    String   @id @db.VarChar
-  sess   Json     @db.Json
-  expire DateTime @db.Timestamp(6)
-
-  @@index([expire])
-  @@ignore
-}
+// NOTE: The "sessions" table exists in the database but is managed by
+// express-session/connect-pg-simple, NOT by Prisma. Do not add it here.
 
 model settings {
   id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar
