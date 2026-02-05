@@ -1126,9 +1126,9 @@ model service_tasks {
 }
 
 model sessions {
-  sid    String   @id @default(uuid()) @db.VarChar
-  sess   Json?    @db.Json
-  expire DateTime? @db.Timestamp(6)
+  sid    String   @id @db.VarChar
+  sess   Json     @db.Json
+  expire DateTime @db.Timestamp(6)
 
   @@index([expire])
 }
