@@ -274,12 +274,15 @@ model Job {
   id               String      @id @default(uuid())
   type             JobType
   propertyId       String
-  assignedToUserId String
+  assignedToUserId String?
   status           JobStatus   @default(pending)
+  acceptedAt       DateTime?
+  dismissedAt      DateTime?
+  dismissedReason  String?
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
   estimates        Estimate[]
-  assignedTo       User        @relation(fields: [assignedToUserId], references: [id], onDelete: Cascade)
+  assignedTo       User?       @relation(fields: [assignedToUserId], references: [id], onDelete: Cascade)
   property         Property    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   timeEntries      TimeEntry[]
 }
